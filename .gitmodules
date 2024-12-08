@@ -7,3 +7,6 @@
 [submodule "lib/solmate"]
 	path = lib/solmate
 	url = https://github.com/transmissions11/solmate
+[submodule "lib/circles-contracts-v2"]
+	path = lib/circles-contracts-v2
+	url = https://github.com/aboutcircles/circles-contracts-v2
