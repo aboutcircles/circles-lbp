@@ -2,7 +2,7 @@
 pragma solidity ^0.8.28;
 
 import {Script, console} from "forge-std/Script.sol";
-import {CreateTestProxyLBPMintPolicy} from "src/CreateTestProxyLBPMintPolicy.sol";
+import {CreateTestProxyLBPMintPolicy} from "src/proxy/CreateTestProxyLBPMintPolicy.sol";
 
 contract DeployTestProxyCreator is Script {
     address internal testLBPMintPolicyImplementation;

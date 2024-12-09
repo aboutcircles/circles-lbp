@@ -3,8 +3,8 @@ pragma solidity ^0.8.28;
 
 import {Test, console} from "forge-std/Test.sol";
 import {Vm} from "forge-std/Vm.sol";
-import {CreateTestProxyLBPMintPolicy} from "src/CreateTestProxyLBPMintPolicy.sol";
-import {TestLBPMintPolicy} from "src/TestLBPMintPolicy.sol";
+import {CreateTestProxyLBPMintPolicy} from "src/proxy/CreateTestProxyLBPMintPolicy.sol";
+import {TestLBPMintPolicy} from "src/policy/TestLBPMintPolicy.sol";
 
 contract MockImplementation {
     uint256 constant a = 1;

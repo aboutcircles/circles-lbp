@@ -3,7 +3,7 @@ pragma solidity ^0.8.28;
 
 import {MintPolicy, IMintPolicy, BaseMintPolicyDefinitions} from "circles-contracts-v2/groups/BaseMintPolicy.sol";
 import {Initializable} from "@openzeppelin/contracts/proxy/utils/Initializable.sol";
-import {GroupDemurrage} from "src/GroupDemurrage.sol";
+import {GroupDemurrage} from "src/policy/GroupDemurrage.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 /**
