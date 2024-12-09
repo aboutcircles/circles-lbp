@@ -10,3 +10,6 @@
 [submodule "lib/circles-contracts-v2"]
 	path = lib/circles-contracts-v2
 	url = https://github.com/aboutcircles/circles-contracts-v2
+[submodule "lib/safe-smart-account"]
+	path = lib/safe-smart-account
+	url = https://github.com/safe-global/safe-smart-account
