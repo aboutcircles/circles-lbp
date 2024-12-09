@@ -34,7 +34,7 @@ contract CreateTestProxyLBPMintPolicy {
      */
     function createTestProxyMintPolicy() external {
         if (address(this) == thisAddress) revert OnlyDelegateCall();
-        bytes memory data;
+        bytes memory data = abi.encodeWithSignature("initialize()");
         address proxy = address(new TestRenounceableProxy(testLBPMintPolicyImplementation, data));
         emit ProxyCreation(proxy);
     }
