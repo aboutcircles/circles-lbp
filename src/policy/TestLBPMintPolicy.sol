@@ -5,6 +5,7 @@ import {MintPolicy, IMintPolicy, BaseMintPolicyDefinitions} from "circles-contra
 import {Initializable} from "@openzeppelin/contracts/proxy/utils/Initializable.sol";
 import {GroupDemurrage} from "src/policy/GroupDemurrage.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {ITestTrustModule} from "src/interfaces/ITestTrustModule.sol";
 
 /**
  * @title Test version of Liquidity Bootstraping Pool Mint Policy.
@@ -53,6 +54,8 @@ contract TestLBPMintPolicy is Initializable, GroupDemurrage, MintPolicy {
     address public constant STANDARD_TREASURY = address(0x08F90aB73A515308f03A718257ff9887ED330C6e);
     /// @notice Test version of CirclesLBPFactory.
     address public constant TEST_CIRCLES_LBP_FACTORY = address(4324);
+    /// @notice Test version of TrustModule.
+    ITestTrustModule public constant TEST_TRUST_MODULE = ITestTrustModule(address(4435324));
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -62,6 +65,7 @@ contract TestLBPMintPolicy is Initializable, GroupDemurrage, MintPolicy {
     function initialize() external initializer {
         TestLBPMintPolicyStorage storage $ = _getTestLBPMintPolicyStorage();
         $.groupAvatar = msg.sender;
+        TEST_TRUST_MODULE.setSafe(msg.sender);
     }
 
     // Hub Mint Policy logic
