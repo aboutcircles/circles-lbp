@@ -54,6 +54,7 @@ contract TestTrustModule {
         emit Trust(avatar, address(safe), msg.sender);
     }
 
+    /// @notice Allows mint policy to request Safe call to untrust avatar.
     function untrust(address avatar) external {
         Safe safe = _validateSafe();
         _executeTrustRequest(safe, avatar, uint96(block.timestamp));

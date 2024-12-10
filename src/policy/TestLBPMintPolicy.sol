@@ -55,7 +55,8 @@ contract TestLBPMintPolicy is Initializable, GroupDemurrage, MintPolicy {
     /// @notice Test version of CirclesLBPFactory.
     address public constant TEST_CIRCLES_LBP_FACTORY = address(4324);
     /// @notice Test version of TrustModule.
-    ITestTrustModule public constant TEST_TRUST_MODULE = ITestTrustModule(address(4435324));
+    ITestTrustModule public constant TEST_TRUST_MODULE =
+        ITestTrustModule(address(0xF62849F9A0B5Bf2913b396098F7c7019b51A820a));
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -71,7 +72,7 @@ contract TestLBPMintPolicy is Initializable, GroupDemurrage, MintPolicy {
     // Hub Mint Policy logic
 
     /**
-     * @notice Before mint checks if user has lbp, account minted amount in positive case
+     * @notice Before mint checks and allows to mint only if user has lbp, accounts minted amount
      */
     function beforeMintPolicy(
         address minter,
@@ -160,6 +161,7 @@ contract TestLBPMintPolicy is Initializable, GroupDemurrage, MintPolicy {
     /**
      * @notice Method should be called by CirclesLBPFactory after LBP onJoinPool with BPT recipient address(this).
      *         Accounts BPT deposit and allows user to mint group token.
+     *         Asks group to trust user avatar as a group collateral.
      */
     function depositBPT(address user, address lbp) external {
         if (msg.sender != TEST_CIRCLES_LBP_FACTORY) revert OnlyCirclesLBPFactory();
@@ -169,8 +171,15 @@ contract TestLBPMintPolicy is Initializable, GroupDemurrage, MintPolicy {
         _setLBP(user, lbp, bptAmount);
         emit BPTDeposit(user, lbp, bptAmount);
         // safe.module try groupAvatar trust user
+        try TEST_TRUST_MODULE.trust(user) {} catch {}
     }
 
+    /**
+     * @notice Method allows LBP user to withdraw Balancer Pool Tokens related to LBP only
+     *         if user current minted group CRC amount is zero.
+     *         Accounts BPT withdrawal and disallows user to mint group token.
+     *         Asks group to untrust user avatar as a group collateral.
+     */
     function withdrawBPT() external {
         address user = msg.sender;
         uint256 mintedAmountOnToday;
@@ -183,6 +192,7 @@ contract TestLBPMintPolicy is Initializable, GroupDemurrage, MintPolicy {
         IERC20(lbp).transfer(user, bptAmount);
         emit BPTWithdrawal(user, lbp, bptAmount);
         // safe.module try groupAvatar untrust user
+        try TEST_TRUST_MODULE.untrust(user) {} catch {}
     }
 
     // View functions

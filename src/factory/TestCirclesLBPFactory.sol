@@ -73,7 +73,10 @@ contract TestCirclesLBPFactory {
 
     // LBP Factory logic
 
-    /// @dev Required InflationaryCircles approval at least 48CRC before call
+    /// @notice Creates LBP with underlying assets: `XDAI_AMOUNT` SxDAI and `CRC_AMOUNT` InflationaryCircles.
+    ///         Balancer Pool Token receiver is Mint Policy related to `group` Group CRC.
+    ///         Calls Group Mint Policy to trigger necessary actions related to user backing personal CRC.
+    /// @dev Required InflationaryCircles approval at least `CRC_AMOUNT` before call
     ///      swapFeePercentage bounds are: from 1e12 (0.0001%) to 1e17 (10%)
     function createLBP(address group, uint256 swapFeePercentage, uint256 updateWeightDuration) external payable {
         // check msg.value
@@ -115,7 +118,7 @@ contract TestCirclesLBPFactory {
             tokens,
             weights,
             swapFeePercentage,
-            address(this),
+            address(this), // lbp owner
             true // enable swap on start
         );
         // attach lbp to user/group
@@ -148,6 +151,8 @@ contract TestCirclesLBPFactory {
         ITestLBPMintPolicy(mintPolicy).depositBPT(msg.sender, lbp);
     }
 
+    /// @notice General wrapper function over vault.exitPool, allows to extract
+    ///         liquidity from pool by approving this Factory to spend Balancer Pool Tokens.
     /// @dev Required Balancer Pool Token approval for bptAmount before call
     function exitLBP(address lbp, uint256 bptAmount) external {
         // transfer bpt tokens from msg.sender
@@ -165,8 +170,8 @@ contract TestCirclesLBPFactory {
         // exit pool
         IVault(VAULT).exitPool(
             poolId,
-            address(this),
-            payable(msg.sender),
+            address(this), // sender
+            payable(msg.sender), // recipient
             IVault.ExitPoolRequest(
                 poolTokens, minAmountsOut, abi.encode(ILBP.ExitKind.EXACT_BPT_IN_FOR_TOKENS_OUT, bptAmount), false
             )

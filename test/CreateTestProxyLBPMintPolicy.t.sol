@@ -5,6 +5,7 @@ import {Test, console} from "forge-std/Test.sol";
 import {Vm} from "forge-std/Vm.sol";
 import {CreateTestProxyLBPMintPolicy} from "src/proxy/CreateTestProxyLBPMintPolicy.sol";
 import {TestLBPMintPolicy} from "src/policy/TestLBPMintPolicy.sol";
+import {TestTrustModule} from "src/module/TestTrustModule.sol";
 
 contract MockImplementation {
     uint256 constant a = 1;
@@ -23,9 +24,11 @@ contract CreateTestProxyLBPMintPolicyTest is Test {
     CreateTestProxyLBPMintPolicy public proxyDeployer;
     address public mockImplementation = address(new MockImplementation());
     address public implementation = address(new TestLBPMintPolicy());
+    address public trustModule = address(new TestTrustModule());
 
     function setUp() public {
         proxyDeployer = new CreateTestProxyLBPMintPolicy(implementation);
+        // probably need to set code to trust module address
     }
 
     function testFuzz_OnlyDelegateCall(address any) public {
