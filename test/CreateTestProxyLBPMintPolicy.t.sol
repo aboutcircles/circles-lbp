@@ -24,11 +24,11 @@ contract CreateTestProxyLBPMintPolicyTest is Test {
     CreateTestProxyLBPMintPolicy public proxyDeployer;
     address public mockImplementation = address(new MockImplementation());
     address public implementation = address(new TestLBPMintPolicy());
-    address public trustModule = address(new TestTrustModule());
+    address public trustModule = address(0x56652E53649F20C6a360Ea5F25379F9987cECE82);
 
     function setUp() public {
         proxyDeployer = new CreateTestProxyLBPMintPolicy(implementation);
-        // probably need to set code to trust module address
+        deployCodeTo("TestTrustModule.sol", trustModule);
     }
 
     function testFuzz_OnlyDelegateCall(address any) public {

@@ -53,10 +53,10 @@ contract TestLBPMintPolicy is Initializable, GroupDemurrage, MintPolicy {
     /// @notice Circles v2 StandardTreasury.
     address public constant STANDARD_TREASURY = address(0x08F90aB73A515308f03A718257ff9887ED330C6e);
     /// @notice Test version of CirclesLBPFactory.
-    address public constant TEST_CIRCLES_LBP_FACTORY = address(4324);
+    address public constant TEST_CIRCLES_LBP_FACTORY = address(0x97030b525248cAc78aabcc33D37139BfB5a34750);
     /// @notice Test version of TrustModule.
     ITestTrustModule public constant TEST_TRUST_MODULE =
-        ITestTrustModule(address(0xF62849F9A0B5Bf2913b396098F7c7019b51A820a));
+        ITestTrustModule(address(0x56652E53649F20C6a360Ea5F25379F9987cECE82));
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
