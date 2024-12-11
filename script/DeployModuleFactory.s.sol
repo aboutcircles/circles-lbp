@@ -16,7 +16,7 @@ contract DeployModuleFactory is Script {
         vm.startBroadcast(deployer);
 
         trustModule = new TestTrustModule();
-        circlesLBPFactory = new TestCirclesLBPFactory(); 
+        circlesLBPFactory = new TestCirclesLBPFactory();
 
         vm.stopBroadcast();
         console.log(address(trustModule), "TrustModule");
