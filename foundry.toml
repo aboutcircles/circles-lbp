@@ -6,4 +6,7 @@ libs = ["lib"]
 [rpc_endpoints]
 gnosis = "${GNOSIS_RPC}"
 
+[etherscan]
+gnoscan = { key = "${GNOSIS_SCAN_KEY}" }
+
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
