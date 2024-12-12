@@ -13,10 +13,14 @@ import {ModuleManager} from "safe-smart-account/contracts/base/ModuleManager.sol
 import {Hub} from "circles-contracts-v2/hub/Hub.sol";
 import {CirclesType} from "circles-contracts-v2/lift/IERC20Lift.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {TypeDefinitions} from "circles-contracts-v2/hub/TypeDefinitions.sol";
+import {BaseMintPolicyDefinitions} from "circles-contracts-v2/groups/Definitions.sol";
 
 contract DepositFlowTest is Test {
     uint256 blockNumber = 37_456_676;
     uint256 gnosis;
+    // constants
+    bytes32 internal constant METADATATYPE_GROUPREDEEM = keccak256("CIRCLESv2:RESERVED_DATA:CirclesGroupRedeem");
     // deployment
     address public constant STANDARD_TREASURY = address(0x08F90aB73A515308f03A718257ff9887ED330C6e);
     Hub public hub = Hub(address(0xc12C1E50ABB450d6205Ea2C3Fa861b3B834d13e8));
@@ -65,13 +69,23 @@ contract DepositFlowTest is Test {
     function testWithdrawSameTimestampMint() public {
         _createLBPGroupMint();
         // 1. redeem collateral group
-        //bytes memory data = abi.encode();
-        //vm.prank(testAccount);
-        //hub.safeTransferFrom(testAccount, STANDARD_TREASURY, uint256(uint160(address(testGroupSafe))), 10 ether, "");
+        uint256[] memory redemptionIds = new uint256[](1);
+        redemptionIds[0] = uint256(uint160(address(testAccount)));
+        uint256[] memory redemptionValues = new uint256[](1);
+        redemptionValues[0] = 5 ether;
+
+        bytes memory userData =
+            abi.encode(BaseMintPolicyDefinitions.BaseRedemptionPolicy(redemptionIds, redemptionValues));
+
+        bytes memory data = abi.encode(TypeDefinitions.Metadata(METADATATYPE_GROUPREDEEM, "", userData));
+
+        vm.prank(testAccount);
+        hub.safeTransferFrom(testAccount, STANDARD_TREASURY, uint256(uint160(address(testGroupSafe))), 5 ether, data);
+
         address lbp = TestLBPMintPolicy(proxy).getLBPAddress(testAccount);
         // 2. burn group token
         vm.prank(testAccount);
-        hub.burn(uint256(uint160(address(testGroupSafe))), 10 ether, "");
+        hub.burn(uint256(uint160(address(testGroupSafe))), 5 ether, "");
 
         vm.prank(testAccount);
         TestLBPMintPolicy(proxy).withdrawBPT();
@@ -95,14 +109,28 @@ contract DepositFlowTest is Test {
 
     function _withdrawAfter(uint256 duration, uint256 amount) internal {
         vm.warp(block.timestamp + duration);
+        uint256 amountToRedeem = amount / 2;
+        uint256 amountToBurn = amount - amountToRedeem;
         // 1. redeem collateral group
-        //bytes memory data = abi.encode();
-        //vm.prank(testAccount);
-        //hub.safeTransferFrom(testAccount, STANDARD_TREASURY, uint256(uint160(address(testGroupSafe))), 10 ether, "");
+        uint256[] memory redemptionIds = new uint256[](1);
+        redemptionIds[0] = uint256(uint160(address(testAccount)));
+        uint256[] memory redemptionValues = new uint256[](1);
+        redemptionValues[0] = amountToRedeem;
+
+        bytes memory userData =
+            abi.encode(BaseMintPolicyDefinitions.BaseRedemptionPolicy(redemptionIds, redemptionValues));
+
+        bytes memory data = abi.encode(TypeDefinitions.Metadata(METADATATYPE_GROUPREDEEM, "", userData));
+
+        vm.prank(testAccount);
+        hub.safeTransferFrom(
+            testAccount, STANDARD_TREASURY, uint256(uint160(address(testGroupSafe))), amountToRedeem, data
+        );
+
         address lbp = TestLBPMintPolicy(proxy).getLBPAddress(testAccount);
         // 2. burn group token
         vm.prank(testAccount);
-        hub.burn(uint256(uint160(address(testGroupSafe))), amount, "");
+        hub.burn(uint256(uint160(address(testGroupSafe))), amountToBurn, "");
 
         vm.prank(testAccount);
         TestLBPMintPolicy(proxy).withdrawBPT();
