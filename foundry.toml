@@ -7,6 +7,6 @@ libs = ["lib"]
 gnosis = "${GNOSIS_RPC}"
 
 [etherscan]
-gnoscan = { key = "${GNOSIS_SCAN_KEY}" }
+gnosisscan = { key = "${GNOSIS_SCAN_KEY}", chain = 100 }
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options

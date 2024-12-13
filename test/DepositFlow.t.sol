@@ -15,6 +15,7 @@ import {CirclesType} from "circles-contracts-v2/lift/IERC20Lift.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {TypeDefinitions} from "circles-contracts-v2/hub/TypeDefinitions.sol";
 import {BaseMintPolicyDefinitions} from "circles-contracts-v2/groups/Definitions.sol";
+import {RedeemHelper} from "src/helpers/RedeemHelper.sol";
 
 contract DepositFlowTest is Test {
     uint256 blockNumber = 37_456_676;
@@ -34,6 +35,8 @@ contract DepositFlowTest is Test {
     Safe testGroupSafe = Safe(payable(address(0x8bD2e75661Af98037b1Fc9fa0f9435baAa6Dd5ac)));
     address proxy;
     address testAccount = address(0x2A6878e8e34647533C5AA46012008ABfdF496988);
+    // helper
+    RedeemHelper public redeemHelper;
 
     function setUp() public {
         gnosis = vm.createFork(vm.envString("GNOSIS_RPC"), blockNumber);
@@ -60,6 +63,8 @@ contract DepositFlowTest is Test {
         // 3. third setup step for a TestGroup is to registerGroup in Hub with proxy as a mint policy
         data = abi.encodeWithSelector(Hub.registerGroup.selector, proxy, "testGroup", "TG", bytes32(0));
         _executeSafeTx(testGroupSafe, address(hub), data, Enum.Operation.Call);
+
+        redeemHelper = new RedeemHelper();
     }
 
     function testDepositFlow() public {
@@ -74,11 +79,7 @@ contract DepositFlowTest is Test {
         uint256[] memory redemptionValues = new uint256[](1);
         redemptionValues[0] = 5 ether;
 
-        bytes memory userData =
-            abi.encode(BaseMintPolicyDefinitions.BaseRedemptionPolicy(redemptionIds, redemptionValues));
-
-        bytes memory data = abi.encode(TypeDefinitions.Metadata(METADATATYPE_GROUPREDEEM, "", userData));
-
+        bytes memory data = redeemHelper.convertRedemptionToBytes(redemptionIds, redemptionValues);
         vm.prank(testAccount);
         hub.safeTransferFrom(testAccount, STANDARD_TREASURY, uint256(uint160(address(testGroupSafe))), 5 ether, data);
 
