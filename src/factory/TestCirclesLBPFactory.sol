@@ -7,36 +7,35 @@ import {IHub} from "src/interfaces/IHub.sol";
 import {IWXDAI} from "src/interfaces/IWXDAI.sol";
 import {ISXDAI} from "src/interfaces/ISXDAI.sol";
 import {IVault} from "src/interfaces/IVault.sol";
-import {ITestLBPMintPolicy} from "src/interfaces/ITestLBPMintPolicy.sol";
 import {ILiftERC20} from "src/interfaces/ILiftERC20.sol";
 import {INoProtocolFeeLiquidityBootstrappingPoolFactory} from "src/interfaces/ILBPFactory.sol";
 import {ILBP} from "src/interfaces/ILBP.sol";
 
 /**
  * @title Test version of Circles Liquidity Bootstraping Pool Factory.
- * @notice Contract allows to create LBP and deposit BPT to related group TestLBPMintPolicy.
- *         Contract allows to exit pool by providing BPT back.
+ * @notice Contract allows to create LBP.
+ *         Contract allows to exit pool.
  */
 contract TestCirclesLBPFactory {
-    /// Method can be called only by Liquidity Bootstraping Pool owner.
-    error OnlyLBPOwner();
+    /// Method is called by unknown account.
+    error NotAUser();
+    /// Balancer Pool Tokens are still locked.
+    error TokensLockedUntilTimestamp(uint256 timestamp);
     /// Method requires exact `requiredXDai` xDai amount, was provided: `providedXDai`.
     error NotExactXDaiAmount(uint256 providedXDai, uint256 requiredXDai);
-    /// LBP was created previously for this `group` group, currently only 1 LBP per user can be created.
-    error OnlyOneLBPPerGroup(address group);
-    /// Mint Policy for this `group` group doesn't support CirclesLBPFactory.
-    error InvalidMintPolicy(address group);
+    /// LBP was created previously, currently only 1 LBP per user can be created.
+    error OnlyOneLBPPerUser();
     /// User `avatar` doesn't have InflationaryCircles.
     error InflationaryCirclesNotExists(address avatar);
     /// Exit Liquidity Bootstraping Pool supports only two tokens pools.
     error OnlyTwoTokenLBPSupported();
 
     /// @notice Emitted when a LBP is created.
-    event LBPCreated(address indexed user, address indexed group, address indexed lbp);
+    event LBPCreated(address indexed user, address indexed lbp);
 
-    struct UserGroup {
-        address user;
-        address group;
+    struct LBPData {
+        address lbp;
+        uint96 bptUnlockTimestamp;
     }
 
     /// @dev BPT name and symbol prefix.
@@ -51,6 +50,10 @@ contract TestCirclesLBPFactory {
     uint256 internal constant WEIGHT_99 = 0.99 ether;
     /// @dev LBP token weight 50%.
     uint256 internal constant WEIGHT_50 = 0.5 ether;
+    /// @dev Update weight duration.
+    //uint256 internal constant UPDATE_WEIGHT_DURATION = 365 days;
+    /// @dev Swap fee percentage is set to 1%.
+    uint256 internal constant SWAP_FEE = 0.01 ether;
 
     /// @notice Balancer v2 Vault.
     address public constant VAULT = address(0xBA12222222228d8Ba445958a75a0704d566BF2C8);
@@ -66,26 +69,20 @@ contract TestCirclesLBPFactory {
     /// @notice Savings xDAI contract.
     ISXDAI public constant SXDAI = ISXDAI(address(0xaf204776c7245bF4147c2612BF6e5972Ee483701));
 
-    mapping(address user => mapping(address group => address lbp)) public userGroupToLBP;
-    mapping(address lbp => UserGroup) public lbpToUserGroup;
+    mapping(address user => LBPData data) public userToLBPData;
 
     constructor() {}
 
     // LBP Factory logic
 
     /// @notice Creates LBP with underlying assets: `XDAI_AMOUNT` SxDAI and `CRC_AMOUNT` InflationaryCircles.
-    ///         Balancer Pool Token receiver is Mint Policy related to `group` Group CRC.
-    ///         Calls Group Mint Policy to trigger necessary actions related to user backing personal CRC.
+    /// @param updateWeightDuration is temporary replacement of constant ONE_YEAR for testing flexibility.
     /// @dev Required InflationaryCircles approval at least `CRC_AMOUNT` before call
-    ///      swapFeePercentage bounds are: from 1e12 (0.0001%) to 1e17 (10%)
-    function createLBP(address group, uint256 swapFeePercentage, uint256 updateWeightDuration) external payable {
+    function createLBP(uint256 updateWeightDuration) external payable {
         // check msg.value
         if (msg.value != XDAI_AMOUNT) revert NotExactXDaiAmount(msg.value, XDAI_AMOUNT);
-        // for now only 1 lbp per group/user
-        if (userGroupToLBP[msg.sender][group] != address(0)) revert OnlyOneLBPPerGroup(group);
-        // check mint policy
-        address mintPolicy = HUB_V2.mintPolicies(group);
-        if (ITestLBPMintPolicy(mintPolicy).TEST_CIRCLES_LBP_FACTORY() != address(this)) revert InvalidMintPolicy(group);
+        // for now only 1 lbp per user
+        if (userToLBPData[msg.sender].lbp != address(0)) revert OnlyOneLBPPerUser();
 
         // check inflationaryCircles
         address inflationaryCirlces = LIFT_ERC20.erc20Circles(uint8(1), msg.sender);
@@ -117,16 +114,14 @@ contract TestCirclesLBPFactory {
             _symbol(inflationaryCirlces),
             tokens,
             weights,
-            swapFeePercentage,
+            SWAP_FEE,
             address(this), // lbp owner
             true // enable swap on start
         );
-        // attach lbp to user/group
-        userGroupToLBP[msg.sender][group] = lbp;
-        // attach user/group to lbp
-        lbpToUserGroup[lbp] = UserGroup(msg.sender, group);
+        // attach lbp to user
+        userToLBPData[msg.sender].lbp = lbp;
 
-        emit LBPCreated(msg.sender, group, lbp);
+        emit LBPCreated(msg.sender, lbp);
 
         bytes32 poolId = ILBP(lbp).getPoolId();
 
@@ -140,15 +135,27 @@ contract TestCirclesLBPFactory {
         IVault(VAULT).joinPool(
             poolId,
             address(this), // sender
-            mintPolicy, // recipient
+            address(this), // recipient
             IVault.JoinPoolRequest(tokens, amountsIn, userData, false)
         );
 
         // update weight gradually
-        ILBP(lbp).updateWeightsGradually(block.timestamp, block.timestamp + updateWeightDuration, _endWeights());
+        uint256 timestampInYear = block.timestamp + updateWeightDuration;
+        ILBP(lbp).updateWeightsGradually(block.timestamp, timestampInYear, _endWeights());
 
-        // call mint policy to account deposit
-        ITestLBPMintPolicy(mintPolicy).depositBPT(msg.sender, lbp);
+        // set bpt unlock
+        userToLBPData[msg.sender].bptUnlockTimestamp = uint96(timestampInYear);
+    }
+
+    function withdrawBalancerPoolTokens() external {
+        uint256 unlockTimestamp = userToLBPData[msg.sender].bptUnlockTimestamp;
+        if (unlockTimestamp == 0) revert NotAUser();
+        if (unlockTimestamp > block.timestamp) revert TokensLockedUntilTimestamp(unlockTimestamp);
+        userToLBPData[msg.sender].bptUnlockTimestamp = 0;
+
+        IERC20 lbp = IERC20(userToLBPData[msg.sender].lbp);
+        uint256 bptAmount = lbp.balanceOf(address(this));
+        lbp.transfer(msg.sender, bptAmount);
     }
 
     /// @notice General wrapper function over vault.exitPool, allows to extract
@@ -176,14 +183,6 @@ contract TestCirclesLBPFactory {
                 poolTokens, minAmountsOut, abi.encode(ILBP.ExitKind.EXACT_BPT_IN_FOR_TOKENS_OUT, bptAmount), false
             )
         );
-    }
-
-    /**
-     * @dev Enable or disables swaps.
-     */
-    function setSwapEnabled(address lbp, bool swapEnabled) external {
-        if (lbpToUserGroup[lbp].user != msg.sender) revert OnlyLBPOwner();
-        ILBP(lbp).setSwapEnabled(swapEnabled);
     }
 
     // Internal functions
