@@ -4,61 +4,41 @@ pragma solidity ^0.8.28;
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IGetUid} from "src/interfaces/IGetUid.sol";
 import {ICowswapSettlement} from "src/interfaces/ICowswapSettlement.sol";
+import {IFactory} from "src/interfaces/IFactory.sol"; // temporary solution
 
 contract CirclesBacking {
+    address public constant USDC = 0x2a22f9c3b484c3629090FeED35F17Ff8F88f76F0;
+    uint256 public constant USDC_DECIMALS = 1e6;
+    uint256 public constant TRADE_AMOUNT = 100 * USDC_DECIMALS;
+    uint32 public constant VALID_TO = uint32(1894006860); // timestamp in 5 years
+
+    address public constant COWSWAP_SETTLEMENT_CONTRACT = 0x9008D19f58AAbD9eD0D60971565AA8510560ab41;
+    address public constant VAULT_RELAY = 0xC92E8bdf79f0507f65a392b0ab4667716BFE0110;
+    address public constant GET_UID_CONTRACT = 0xCA51403B524dF7dA6f9D6BFc64895AD833b5d711;
+
     address public constant WXDAI = 0xe91D153E0b41518A2Ce8Dd3D7944Fa863463a97d;
     address public constant GNO = 0x9C58BAcC331c9aa871AFD802DB6379a98e80CEdb;
-    address public constant GET_UID_CONTRACT = 0xCA51403B524dF7dA6f9D6BFc64895AD833b5d711;
-    address public constant COWSWAP_SETTLEMENT_CONTRACT = 0x9008D19f58AAbD9eD0D60971565AA8510560ab41;
-    address public constant RECEIVER = 0x7B2e78D4dFaABA045A167a70dA285E30E8FcA196;
-    address public constant VAULT_RELAY = 0xC92E8bdf79f0507f65a392b0ab4667716BFE0110;
 
-    uint256 public constant WXDAI_DECIMALS = 1e18;
-    uint256 public constant TRADE_AMOUNT = 100000000000000000; // 0.1 wxDAI in 18 decimals
-    uint32 public constant VALID_TO = uint32(1894006860);
+    address public backer;
+    address public backingAsset;
+    address public personalCircles;
+    bytes32 public appData;
 
     bytes public storedOrderUid;
 
     event OrderCreated(bytes32 orderHash);
-    event GnoTransferred(uint256 amount, address receiver);
 
-    string public constant preAppData =
-        '{"version":"1.1.0","appCode":"Zeal powered by Qantura","metadata":{"hooks":{"version":"0.1.0","post":[{"target":"';
-    string public constant postAppData = '","callData":"0xbb5ae136","gasLimit":"200000"}]}}}'; // Updated calldata for checkOrderFilledAndTransfer
-
-    function addressToString(address _addr) internal pure returns (string memory) {
-        bytes32 value = bytes32(uint256(uint160(_addr)));
-        bytes memory alphabet = "0123456789abcdef";
-
-        bytes memory str = new bytes(42);
-        str[0] = "0";
-        str[1] = "x";
-
-        for (uint256 i = 0; i < 20; i++) {
-            str[2 + i * 2] = alphabet[uint8(value[i + 12] >> 4)];
-            str[3 + i * 2] = alphabet[uint8(value[i + 12] & 0x0f)];
-        }
-
-        return string(str);
-    }
-
-    function getAppData(address _newAccount) public pure returns (bytes32) {
-        string memory _newAccountStr = addressToString(_newAccount);
-        string memory _appDataStr = string.concat(preAppData, _newAccountStr, postAppData);
-        return keccak256(bytes(_appDataStr));
-    }
-
-    function getAppDataString(address _newAccount) public pure returns (string memory) {
-        string memory _newAccountStr = addressToString(_newAccount);
-        return string.concat(preAppData, _newAccountStr, postAppData);
+    constructor(address _backer, address _backingAsset, address _personalCircles) {
+        backer = _backer;
+        backingAsset = _backingAsset;
+        personalCircles = _personalCircles;
+        (, bytes32 appDataHash) = IFactory(msg.sender).getAppData(address(this)); // temporary solution
+        appData = appDataHash;
     }
 
     function createOrder() external {
-        // Approve wxDAI to Vault Relay contract
-        IERC20(WXDAI).approve(VAULT_RELAY, TRADE_AMOUNT);
-
-        // Generate appData dynamically
-        bytes32 appData = getAppData(address(this));
+        // Approve USDC to Vault Relay contract
+        IERC20(USDC).approve(VAULT_RELAY, TRADE_AMOUNT);
 
         // Generate order UID using the "getUid" contract
         IGetUid getUidContract = IGetUid(GET_UID_CONTRACT);
@@ -102,10 +82,7 @@ contract CirclesBacking {
         require(gnoBalance > 0, "No GNO balance to transfer");
 
         // Transfer GNO to the receiver
-        bool success = IERC20(GNO).transfer(RECEIVER, gnoBalance);
+        bool success = IERC20(GNO).transfer(backer, gnoBalance);
         require(success, "GNO transfer failed");
-
-        // Emit event for the transfer
-        emit GnoTransferred(gnoBalance, RECEIVER);
     }
 }

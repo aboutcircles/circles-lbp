@@ -10,6 +10,7 @@ import {IVault} from "src/interfaces/IVault.sol";
 import {ILiftERC20} from "src/interfaces/ILiftERC20.sol";
 import {INoProtocolFeeLiquidityBootstrappingPoolFactory} from "src/interfaces/ILBPFactory.sol";
 import {ILBP} from "src/interfaces/ILBP.sol";
+import {CirclesBacking} from "src/CirclesBacking.sol";
 
 /**
  * @title Circles Backing Factory.
@@ -17,6 +18,8 @@ import {ILBP} from "src/interfaces/ILBP.sol";
  *         Factory should have an admin function to make release of lbp for everyone.
  */
 contract CirclesBackingFactory {
+    /// Circles backing does not support `requestedAsset` asset.
+    error UnsupportedBackingAsset(address requestedAsset);
     /// Method is called by unknown account.
     error NotAUser();
     /// Balancer Pool Tokens are still locked.
@@ -32,6 +35,9 @@ contract CirclesBackingFactory {
 
     /// @notice Emitted when a LBP is created.
     event LBPCreated(address indexed user, address indexed lbp);
+
+    /// @notice Emitted when a CirclesBacking is created.
+    event CirclesBackingDeployed(address indexed deployedAddress, address indexed backer);
 
     struct LBPData {
         address lbp;
@@ -71,7 +77,97 @@ contract CirclesBackingFactory {
 
     mapping(address user => LBPData data) public userToLBPData;
 
+    string public constant preAppData =
+        '{"version":"1.1.0","appCode":"Circles backing powered by AboutCircles","metadata":{"hooks":{"version":"0.1.0","post":[{"target":"';
+    string public constant postAppData = '","callData":"0xbb5ae136","gasLimit":"200000"}]}}}'; // Updated calldata for checkOrderFilledAndTransfer
+
+    mapping(address supportedAsset => bool) public supportedBackingAssets;
+
     constructor() {}
+
+    function startBacking(address backingAsset) external {
+        if (!supportedBackingAssets[backingAsset]) revert UnsupportedBackingAsset(backingAsset);
+        address personalCirclesAddress = getPersonalCircles(msg.sender);
+        address instance = deployCirclesBacking(msg.sender, backingAsset, personalCirclesAddress);
+    }
+
+    // personal circles
+
+    function getPersonalCircles(address avatar) public view returns (address inflationaryCircles) {
+        inflationaryCircles = LIFT_ERC20.erc20Circles(uint8(1), avatar);
+        if (inflationaryCircles == address(0)) revert InflationaryCirclesNotExists(avatar);
+    }
+
+    // cowswap app data
+
+    function getAppData(address _circlesBackingInstance)
+        public
+        pure
+        returns (string memory appDataString, bytes32 appDataHash)
+    {
+        string memory instanceAddressStr = addressToString(_circlesBackingInstance);
+        appDataString = string.concat(preAppData, instanceAddressStr, postAppData);
+        appDataHash = keccak256(bytes(appDataString));
+    }
+
+    function addressToString(address _addr) internal pure returns (string memory) {
+        bytes32 value = bytes32(uint256(uint160(_addr)));
+        bytes memory alphabet = "0123456789abcdef";
+
+        bytes memory str = new bytes(42);
+        str[0] = "0";
+        str[1] = "x";
+
+        for (uint256 i = 0; i < 20; i++) {
+            str[2 + i * 2] = alphabet[uint8(value[i + 12] >> 4)];
+            str[3 + i * 2] = alphabet[uint8(value[i + 12] & 0x0f)];
+        }
+
+        return string(str);
+    }
+
+    // deploy instance
+    /**
+     * @notice Deploys a new CirclesBacking contract with CREATE2.
+     * @param backingAsset Address which will be used to back circles.
+     * @param backer Address which is backing circles.
+     * @return deployedAddress Address of the deployed contract.
+     */
+    function deployCirclesBacking(address backer, address backingAsset, address personalCircles)
+        internal
+        returns (address deployedAddress)
+    {
+        bytes32 salt = keccak256(abi.encodePacked(backer));
+        bytes memory bytecode =
+            abi.encodePacked(type(CirclesBacking).creationCode, abi.encode(backer, backingAsset, personalCircles));
+
+        assembly {
+            deployedAddress := create2(0, add(bytecode, 0x20), mload(bytecode), salt)
+            if iszero(extcodesize(deployedAddress)) { revert(0, 0) }
+        }
+
+        emit CirclesBackingDeployed(deployedAddress, backer);
+    }
+
+    // counterfactual
+    /**
+     * @notice Computes the deterministic address for CirclesBacking contract.
+     * @param backingAsset Asset which will be used to back circles.
+     * @param backer Address which is backing circles.
+     * @return predictedAddress Predicted address of the deployed contract.
+     */
+    function computeAddress(address backer, address backingAsset, address personalCircles)
+        external
+        view
+        returns (address predictedAddress)
+    {
+        bytes32 salt = keccak256(abi.encodePacked(backer));
+        bytes memory bytecode =
+            abi.encodePacked(type(CirclesBacking).creationCode, abi.encode(backer, backingAsset, personalCircles));
+        predictedAddress = address(
+            uint160(uint256(keccak256(abi.encodePacked(bytes1(0xff), address(this), salt, keccak256(bytecode)))))
+        );
+    }
 
     // LBP Factory logic
 
