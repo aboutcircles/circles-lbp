@@ -11,6 +11,7 @@ import {ILiftERC20} from "src/interfaces/ILiftERC20.sol";
 import {INoProtocolFeeLiquidityBootstrappingPoolFactory} from "src/interfaces/ILBPFactory.sol";
 import {ILBP} from "src/interfaces/ILBP.sol";
 import {CirclesBacking} from "src/CirclesBacking.sol";
+import {IGetUid} from "src/interfaces/IGetUid.sol";
 
 /**
  * @title Circles Backing Factory.
@@ -43,6 +44,13 @@ contract CirclesBackingFactory {
         address lbp;
         uint96 bptUnlockTimestamp;
     }
+
+    // order constants
+    address public constant GET_UID_CONTRACT = 0xCA51403B524dF7dA6f9D6BFc64895AD833b5d711;
+    address public constant USDC = 0x2a22f9c3b484c3629090FeED35F17Ff8F88f76F0;
+    uint256 public constant USDC_DECIMALS = 1e6;
+    uint256 public constant TRADE_AMOUNT = 100 * USDC_DECIMALS;
+    uint32 public constant VALID_TO = uint32(1894006860); // timestamp in 5 years
 
     /// @dev BPT name and symbol prefix.
     string internal constant LBP_PREFIX = "testLBP-";
@@ -88,7 +96,29 @@ contract CirclesBackingFactory {
     function startBacking(address backingAsset) external {
         if (!supportedBackingAssets[backingAsset]) revert UnsupportedBackingAsset(backingAsset);
         address personalCirclesAddress = getPersonalCircles(msg.sender);
-        address instance = deployCirclesBacking(msg.sender, backingAsset, personalCirclesAddress);
+        address instance = deployCirclesBacking(msg.sender);
+
+        // create order
+        (, bytes32 appData) = getAppData(instance);
+        // Generate order UID using the "getUid" contract
+        IGetUid getUidContract = IGetUid(GET_UID_CONTRACT);
+        (bytes32 orderDigest,) = getUidContract.getUid(
+            USDC,
+            backingAsset,
+            instance, // Use contract address as the receiver
+            TRADE_AMOUNT,
+            1, // Determined by off-chain logic or Cowswap solvers
+            VALID_TO, // ValidTo timestamp
+            appData,
+            0, // FeeAmount
+            true, // IsSell
+            false // PartiallyFillable
+        );
+        // Construct the order UID
+        bytes memory orderUid = abi.encodePacked(orderDigest, instance, uint32(VALID_TO));
+        CirclesBacking(instance).initAndCreateOrder(
+            msg.sender, backingAsset, personalCirclesAddress, orderUid, USDC, TRADE_AMOUNT
+        );
     }
 
     // personal circles
@@ -129,17 +159,12 @@ contract CirclesBackingFactory {
     // deploy instance
     /**
      * @notice Deploys a new CirclesBacking contract with CREATE2.
-     * @param backingAsset Address which will be used to back circles.
      * @param backer Address which is backing circles.
      * @return deployedAddress Address of the deployed contract.
      */
-    function deployCirclesBacking(address backer, address backingAsset, address personalCircles)
-        internal
-        returns (address deployedAddress)
-    {
+    function deployCirclesBacking(address backer) internal returns (address deployedAddress) {
         bytes32 salt = keccak256(abi.encodePacked(backer));
-        bytes memory bytecode =
-            abi.encodePacked(type(CirclesBacking).creationCode, abi.encode(backer, backingAsset, personalCircles));
+        bytes memory bytecode = type(CirclesBacking).creationCode;
 
         assembly {
             deployedAddress := create2(0, add(bytecode, 0x20), mload(bytecode), salt)
@@ -152,18 +177,12 @@ contract CirclesBackingFactory {
     // counterfactual
     /**
      * @notice Computes the deterministic address for CirclesBacking contract.
-     * @param backingAsset Asset which will be used to back circles.
      * @param backer Address which is backing circles.
      * @return predictedAddress Predicted address of the deployed contract.
      */
-    function computeAddress(address backer, address backingAsset, address personalCircles)
-        external
-        view
-        returns (address predictedAddress)
-    {
+    function computeAddress(address backer) external view returns (address predictedAddress) {
         bytes32 salt = keccak256(abi.encodePacked(backer));
-        bytes memory bytecode =
-            abi.encodePacked(type(CirclesBacking).creationCode, abi.encode(backer, backingAsset, personalCircles));
+        bytes memory bytecode = type(CirclesBacking).creationCode;
         predictedAddress = address(
             uint160(uint256(keccak256(abi.encodePacked(bytes1(0xff), address(this), salt, keccak256(bytecode)))))
         );
