@@ -15,6 +15,7 @@ import {ILBP} from "src/interfaces/ILBP.sol";
  * @title Test version of Circles Liquidity Bootstraping Pool Factory.
  * @notice Contract allows to create LBP.
  *         Contract allows to exit pool.
+ *         Factory should have an admin function to make release of lbp for everyone.
  */
 contract TestCirclesLBPFactory {
     /// Method is called by unknown account.
