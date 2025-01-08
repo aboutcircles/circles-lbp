@@ -12,12 +12,11 @@ import {INoProtocolFeeLiquidityBootstrappingPoolFactory} from "src/interfaces/IL
 import {ILBP} from "src/interfaces/ILBP.sol";
 
 /**
- * @title Test version of Circles Liquidity Bootstraping Pool Factory.
- * @notice Contract allows to create LBP.
- *         Contract allows to exit pool.
+ * @title Circles Backing Factory.
+ * @notice Contract allows to create CircleBacking instances.
  *         Factory should have an admin function to make release of lbp for everyone.
  */
-contract TestCirclesLBPFactory {
+contract CirclesBackingFactory {
     /// Method is called by unknown account.
     error NotAUser();
     /// Balancer Pool Tokens are still locked.

@@ -1,33 +1,11 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: AGPL-3.0-only
 pragma solidity ^0.8.28;
 
-interface IERC20 {
-    function approve(address spender, uint256 amount) external returns (bool);
-    function balanceOf(address account) external view returns (uint256);
-    function transfer(address recipient, uint256 amount) external returns (bool);
-}
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IGetUid} from "src/interfaces/IGetUid.sol";
+import {ICowswapSettlement} from "src/interfaces/ICowswapSettlement.sol";
 
-interface IGetUid {
-    function getUid(
-        address sellToken,
-        address buyToken,
-        address receiver,
-        uint256 sellAmount,
-        uint256 buyAmount,
-        uint32 validTo,
-        bytes32 appData,
-        uint256 feeAmount,
-        bool isSell,
-        bool partiallyFillable
-    ) external view returns (bytes32 hash, bytes memory encoded);
-}
-
-interface ICowswapSettlement {
-    function setPreSignature(bytes calldata orderUid, bool signed) external;
-    function filledAmount(bytes calldata orderUid) external view returns (uint256);
-}
-
-contract OrderCreator {
+contract CirclesBacking {
     address public constant WXDAI = 0xe91D153E0b41518A2Ce8Dd3D7944Fa863463a97d;
     address public constant GNO = 0x9C58BAcC331c9aa871AFD802DB6379a98e80CEdb;
     address public constant GET_UID_CONTRACT = 0xCA51403B524dF7dA6f9D6BFc64895AD833b5d711;
