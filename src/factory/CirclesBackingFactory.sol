@@ -3,15 +3,13 @@ pragma solidity ^0.8.28;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
-import {IHub} from "src/interfaces/IHub.sol";
-import {IWXDAI} from "src/interfaces/IWXDAI.sol";
-import {ISXDAI} from "src/interfaces/ISXDAI.sol";
+import {IGetUid} from "src/interfaces/IGetUid.sol";
 import {IVault} from "src/interfaces/IVault.sol";
-import {ILiftERC20} from "src/interfaces/ILiftERC20.sol";
 import {INoProtocolFeeLiquidityBootstrappingPoolFactory} from "src/interfaces/ILBPFactory.sol";
 import {ILBP} from "src/interfaces/ILBP.sol";
+import {IHub} from "src/interfaces/IHub.sol";
+import {ILiftERC20} from "src/interfaces/ILiftERC20.sol";
 import {CirclesBacking} from "src/CirclesBacking.sol";
-import {IGetUid} from "src/interfaces/IGetUid.sol";
 
 /**
  * @title Circles Backing Factory.
@@ -21,111 +19,140 @@ import {IGetUid} from "src/interfaces/IGetUid.sol";
 contract CirclesBackingFactory {
     /// Circles backing does not support `requestedAsset` asset.
     error UnsupportedBackingAsset(address requestedAsset);
-    /// Method is called by unknown account.
-    error NotAUser();
-    /// Balancer Pool Tokens are still locked.
-    error TokensLockedUntilTimestamp(uint256 timestamp);
+    /// Deployment of CirclesBacking instance initiated by user `backer` has failed.
+    error CirclesBackingDeploymentFailed(address backer);
+    /// Missing approval of this address to spend personal CRC.
+    error PersonalCirclesApprovalIsMissing();
+    /// Method can be called only by instance of CirclesBacking deployed by this factory.
+    error OnlyCirclesBacking();
     /// Method requires exact `requiredXDai` xDai amount, was provided: `providedXDai`.
     error NotExactXDaiAmount(uint256 providedXDai, uint256 requiredXDai);
     /// LBP was created previously, currently only 1 LBP per user can be created.
     error OnlyOneLBPPerUser();
-    /// User `avatar` doesn't have InflationaryCircles.
-    error InflationaryCirclesNotExists(address avatar);
     /// Exit Liquidity Bootstraping Pool supports only two tokens pools.
     error OnlyTwoTokenLBPSupported();
 
-    /// @notice Emitted when a LBP is created.
-    event LBPCreated(address indexed user, address indexed lbp);
-
     /// @notice Emitted when a CirclesBacking is created.
-    event CirclesBackingDeployed(address indexed deployedAddress, address indexed backer);
+    event CirclesBackingDeployed(address indexed backer, address indexed circlesBackingInstance);
+    /// @notice Emitted when a LBP is created.
+    event LBPCreated(address indexed circlesBackingInstance, address indexed lbp);
+    event CirclesBackingCompleted(
+        address indexed backer,
+        address indexed backingAsset,
+        address indexed circlesBackingInstance,
+        address lbp,
+        address personalCRC
+    );
 
-    struct LBPData {
-        address lbp;
-        uint96 bptUnlockTimestamp;
-    }
-
-    // order constants
-    address public constant GET_UID_CONTRACT = 0xCA51403B524dF7dA6f9D6BFc64895AD833b5d711;
+    // Cowswap order constants.
+    /// @notice Helper contract for crafting Uid.
+    IGetUid public constant GET_UID_CONTRACT = IGetUid(address(0xCA51403B524dF7dA6f9D6BFc64895AD833b5d711));
+    /// @notice USDC.e contract address.
     address public constant USDC = 0x2a22f9c3b484c3629090FeED35F17Ff8F88f76F0;
+    /// @notice ERC20 decimals value for USDC.e.
     uint256 public constant USDC_DECIMALS = 1e6;
+    /// @notice Amount of USDC.e to use in a swap for backing asset or for LBP initial liquidity in case USDC.e is backing asset.
     uint256 public constant TRADE_AMOUNT = 100 * USDC_DECIMALS;
-    uint32 public constant VALID_TO = uint32(1894006860); // timestamp in 5 years
+    /// @notice Deadline for orders expiration - set as timestamp in 5 years after deployment.
+    uint32 public immutable VALID_TO;
+    /// @notice Order appdata divided into 2 strings to insert deployed instance address.
+    string public constant preAppData =
+        '{"version":"1.1.0","appCode":"Circles backing powered by AboutCircles","metadata":{"hooks":{"version":"0.1.0","post":[{"target":"';
+    string public constant postAppData = '","callData":"0x13e8f89f","gasLimit":"200000"}]}}}'; // Updated calldata for createLBP
 
-    /// @dev BPT name and symbol prefix.
-    string internal constant LBP_PREFIX = "testLBP-";
-    /// @notice Amount of xDai to use in LBP initial liquidity.
-    uint256 public constant XDAI_AMOUNT = 50 ether;
-    /// @notice Amount of InflationaryCircles to use in LBP initial liquidity.
-    uint256 public constant CRC_AMOUNT = 48 ether;
-    /// @dev LBP token weight 1%.
-    uint256 internal constant WEIGHT_1 = 0.01 ether;
-    /// @dev LBP token weight 99%.
-    uint256 internal constant WEIGHT_99 = 0.99 ether;
-    /// @dev LBP token weight 50%.
-    uint256 internal constant WEIGHT_50 = 0.5 ether;
-    /// @dev Update weight duration.
-    //uint256 internal constant UPDATE_WEIGHT_DURATION = 365 days;
-    /// @dev Swap fee percentage is set to 1%.
-    uint256 internal constant SWAP_FEE = 0.01 ether;
-
+    /// LBP constants.
     /// @notice Balancer v2 Vault.
     address public constant VAULT = address(0xBA12222222228d8Ba445958a75a0704d566BF2C8);
     /// @notice Balancer v2 LBPFactory.
     INoProtocolFeeLiquidityBootstrappingPoolFactory public constant LBP_FACTORY =
         INoProtocolFeeLiquidityBootstrappingPoolFactory(address(0x85a80afee867aDf27B50BdB7b76DA70f1E853062));
+    /// @dev LBP token weight 1%.
+    uint256 internal constant WEIGHT_1 = 0.01 ether;
+    /// @dev LBP token weight 99%.
+    uint256 internal constant WEIGHT_99 = 0.99 ether;
+    /// @dev Swap fee percentage is set to 1%.
+    uint256 internal constant SWAP_FEE = 0.01 ether;
+    /// @dev BPT name and symbol prefix.
+    string internal constant LBP_PREFIX = "circlesBackingLBP-";
+
+    // Circles constants
     /// @notice Circles Hub v2.
     IHub public constant HUB_V2 = IHub(address(0xc12C1E50ABB450d6205Ea2C3Fa861b3B834d13e8));
     /// @notice Circles v2 LiftERC20 contract.
     ILiftERC20 public constant LIFT_ERC20 = ILiftERC20(address(0x5F99a795dD2743C36D63511f0D4bc667e6d3cDB5));
-    /// @notice Wrapped xDAI contract.
-    IWXDAI public constant WXDAI = IWXDAI(address(0xe91D153E0b41518A2Ce8Dd3D7944Fa863463a97d));
-    /// @notice Savings xDAI contract.
-    ISXDAI public constant SXDAI = ISXDAI(address(0xaf204776c7245bF4147c2612BF6e5972Ee483701));
-
-    mapping(address user => LBPData data) public userToLBPData;
-
-    string public constant preAppData =
-        '{"version":"1.1.0","appCode":"Circles backing powered by AboutCircles","metadata":{"hooks":{"version":"0.1.0","post":[{"target":"';
-    string public constant postAppData = '","callData":"0xbb5ae136","gasLimit":"200000"}]}}}'; // Updated calldata for checkOrderFilledAndTransfer
+    /// @notice Amount of InflationaryCircles to use in LBP initial liquidity.
+    uint256 public constant CRC_AMOUNT = 48 ether;
 
     mapping(address supportedAsset => bool) public supportedBackingAssets;
+    mapping(address circleBacking => address backer) public backerOf;
 
-    constructor() {}
+    constructor() {
+        VALID_TO = uint32(block.timestamp + 1825 days);
+        supportedBackingAssets[address(0x8e5bBbb09Ed1ebdE8674Cda39A0c169401db4252)] = true; // WBTC
+        supportedBackingAssets[address(0x6A023CCd1ff6F2045C3309768eAd9E68F978f6e1)] = true; // WETH
+        supportedBackingAssets[address(0x9C58BAcC331c9aa871AFD802DB6379a98e80CEdb)] = true; // GNO
+        supportedBackingAssets[address(0xaf204776c7245bF4147c2612BF6e5972Ee483701)] = true; // sDAI
+        supportedBackingAssets[USDC] = true; // USDC
+    }
 
+    // @dev Required upfront approval of this contract for CRC and USDC.e
     function startBacking(address backingAsset) external {
         if (!supportedBackingAssets[backingAsset]) revert UnsupportedBackingAsset(backingAsset);
-        address personalCirclesAddress = getPersonalCircles(msg.sender);
+
         address instance = deployCirclesBacking(msg.sender);
+
+        address personalCirclesAddress = getPersonalCircles(msg.sender);
+        // handling personal CRC: 1. try to get Inflationary, if fails 2. try to get 1155 and wrap, if fails revert
+        try IERC20(personalCirclesAddress).transferFrom(msg.sender, instance, CRC_AMOUNT) {}
+        catch {
+            try HUB_V2.safeTransferFrom(msg.sender, address(this), uint256(uint160(msg.sender)), CRC_AMOUNT, "") {
+                // NOTE: for now this flow always reverts as not fully implemented
+                // Reason why not implemented except lack of time is that we might make startBacking internal function called inside
+                // IERC1155Receiver.onERC1155Received and the whole handling personal CRC flow will be refactored.
+                // TODO:
+                //  0. implement IERC1155Receiver.onERC1155Received here
+                //  1. define the exact erc1155 circles amount to get based on constant of erc20 inflationary constant
+                //  2. call wrap on HUB_V2 with the exact erc1155 circles amount and type = 1 (infationary)
+                //  3. check erc20 inflationary balance of address(this) equal CRC_AMOUNT
+                //  4. transfer to instance
+            } catch {
+                revert PersonalCirclesApprovalIsMissing();
+            }
+        }
+
+        // handling USDC.e
+        IERC20(USDC).transferFrom(msg.sender, instance, TRADE_AMOUNT);
 
         // create order
         (, bytes32 appData) = getAppData(instance);
         // Generate order UID using the "getUid" contract
-        IGetUid getUidContract = IGetUid(GET_UID_CONTRACT);
-        (bytes32 orderDigest,) = getUidContract.getUid(
-            USDC,
-            backingAsset,
-            instance, // Use contract address as the receiver
-            TRADE_AMOUNT,
-            1, // Determined by off-chain logic or Cowswap solvers
-            VALID_TO, // ValidTo timestamp
-            appData,
+        (bytes32 orderDigest,) = GET_UID_CONTRACT.getUid(
+            USDC, // sellToken
+            backingAsset, // buyToken
+            instance, // receiver
+            TRADE_AMOUNT, // sellAmount
+            1, // buyAmount: Determined by off-chain logic or Cowswap solvers
+            VALID_TO, // order expiry
+            appData, // appData hash
             0, // FeeAmount
             true, // IsSell
             false // PartiallyFillable
         );
         // Construct the order UID
         bytes memory orderUid = abi.encodePacked(orderDigest, instance, uint32(VALID_TO));
-        CirclesBacking(instance).initAndCreateOrder(
+        // Initiate backing
+        CirclesBacking(instance).initiateBacking(
             msg.sender, backingAsset, personalCirclesAddress, orderUid, USDC, TRADE_AMOUNT
         );
     }
 
     // personal circles
 
+    // @dev this call will revert, if avatar is not registered as human or group in Hub contract
     function getPersonalCircles(address avatar) public view returns (address inflationaryCircles) {
         inflationaryCircles = LIFT_ERC20.erc20Circles(uint8(1), avatar);
-        if (inflationaryCircles == address(0)) revert InflationaryCirclesNotExists(avatar);
+        // TODO: find capacity to understand why i had this revert
+        //if (inflationaryCircles == address(0)) revert InflationaryCirclesNotExists(avatar);
     }
 
     // cowswap app data
@@ -163,15 +190,20 @@ contract CirclesBackingFactory {
      * @return deployedAddress Address of the deployed contract.
      */
     function deployCirclesBacking(address backer) internal returns (address deployedAddress) {
-        bytes32 salt = keccak256(abi.encodePacked(backer));
-        bytes memory bytecode = type(CirclesBacking).creationCode;
+        // open question: do we want backer to be able to create only one backing? - this is how it is now.
+        // or we allow backer to create multiple backings, 1 per supported backing asset - need to add backing asset to salt.
+        bytes32 salt_ = keccak256(abi.encodePacked(backer));
 
-        assembly {
-            deployedAddress := create2(0, add(bytecode, 0x20), mload(bytecode), salt)
-            if iszero(extcodesize(deployedAddress)) { revert(0, 0) }
+        deployedAddress = address(new CirclesBacking{salt: salt_}());
+
+        if (deployedAddress == address(0) || deployedAddress.code.length == 0) {
+            revert CirclesBackingDeploymentFailed(backer);
         }
 
-        emit CirclesBackingDeployed(deployedAddress, backer);
+        // link instance to backer
+        backerOf[deployedAddress] = backer;
+
+        emit CirclesBackingDeployed(backer, deployedAddress);
     }
 
     // counterfactual
@@ -188,89 +220,60 @@ contract CirclesBackingFactory {
         );
     }
 
-    // LBP Factory logic
+    // admin logic
+    // TODO
 
-    /// @notice Creates LBP with underlying assets: `XDAI_AMOUNT` SxDAI and `CRC_AMOUNT` InflationaryCircles.
-    /// @param updateWeightDuration is temporary replacement of constant ONE_YEAR for testing flexibility.
-    /// @dev Required InflationaryCircles approval at least `CRC_AMOUNT` before call
-    function createLBP(uint256 updateWeightDuration) external payable {
-        // check msg.value
-        if (msg.value != XDAI_AMOUNT) revert NotExactXDaiAmount(msg.value, XDAI_AMOUNT);
-        // for now only 1 lbp per user
-        if (userToLBPData[msg.sender].lbp != address(0)) revert OnlyOneLBPPerUser();
+    // LBP logic
 
-        // check inflationaryCircles
-        address inflationaryCirlces = LIFT_ERC20.erc20Circles(uint8(1), msg.sender);
-        if (inflationaryCirlces == address(0)) revert InflationaryCirclesNotExists(msg.sender);
-        IERC20(inflationaryCirlces).transferFrom(msg.sender, address(this), CRC_AMOUNT);
-        // approve vault
-        IERC20(inflationaryCirlces).approve(address(VAULT), CRC_AMOUNT);
-
-        // convert xDAI into SxDAI
-        WXDAI.deposit{value: msg.value}();
-        WXDAI.approve(address(SXDAI), msg.value);
-        uint256 shares = SXDAI.deposit(msg.value, address(this));
-        // approve vault
-        SXDAI.approve(address(VAULT), shares);
+    /// @notice Creates LBP with underlying assets: `backingAssetAmount` backingAsset(`backingAsset`) and `CRC_AMOUNT` InflationaryCircles(`personalCRC`).
+    /// @param personalCRC .
+    function createLBP(address personalCRC, address backingAsset, uint256 backingAssetAmount)
+        external
+        returns (address lbp)
+    {
+        address backer = backerOf[msg.sender];
+        if (backer == address(0)) revert OnlyCirclesBacking();
 
         // prepare inputs
         IERC20[] memory tokens = new IERC20[](2);
-        bool tokenZero = inflationaryCirlces < address(SXDAI);
-        tokens[0] = tokenZero ? IERC20(address(inflationaryCirlces)) : IERC20(address(SXDAI));
-        tokens[1] = tokenZero ? IERC20(address(SXDAI)) : IERC20(address(inflationaryCirlces));
+        bool tokenZero = personalCRC < backingAsset;
+        tokens[0] = tokenZero ? IERC20(personalCRC) : IERC20(backingAsset);
+        tokens[1] = tokenZero ? IERC20(backingAsset) : IERC20(personalCRC);
 
         uint256[] memory weights = new uint256[](2);
         weights[0] = tokenZero ? WEIGHT_1 : WEIGHT_99;
         weights[1] = tokenZero ? WEIGHT_99 : WEIGHT_1;
 
         // create LBP
-        address lbp = LBP_FACTORY.create(
-            _name(inflationaryCirlces),
-            _symbol(inflationaryCirlces),
+        lbp = LBP_FACTORY.create(
+            _name(personalCRC),
+            _symbol(personalCRC),
             tokens,
             weights,
             SWAP_FEE,
-            address(this), // lbp owner
+            msg.sender, // lbp owner
             true // enable swap on start
         );
-        // attach lbp to user
-        userToLBPData[msg.sender].lbp = lbp;
 
-        emit LBPCreated(msg.sender, lbp);
+        emit LBPCreated(backer, lbp);
 
         bytes32 poolId = ILBP(lbp).getPoolId();
 
         uint256[] memory amountsIn = new uint256[](2);
-        amountsIn[0] = tokenZero ? CRC_AMOUNT : shares;
-        amountsIn[1] = tokenZero ? shares : CRC_AMOUNT;
+        amountsIn[0] = tokenZero ? CRC_AMOUNT : backingAssetAmount;
+        amountsIn[1] = tokenZero ? backingAssetAmount : CRC_AMOUNT;
 
         bytes memory userData = abi.encode(ILBP.JoinKind.INIT, amountsIn);
-
+        // CHECK: only owner can join pool, however it looks like anyone can do this call setting owner address as sender
         // provide liquidity into lbp
         IVault(VAULT).joinPool(
             poolId,
-            address(this), // sender
-            address(this), // recipient
+            msg.sender, // sender
+            msg.sender, // recipient
             IVault.JoinPoolRequest(tokens, amountsIn, userData, false)
         );
 
-        // update weight gradually
-        uint256 timestampInYear = block.timestamp + updateWeightDuration;
-        ILBP(lbp).updateWeightsGradually(block.timestamp, timestampInYear, _endWeights());
-
-        // set bpt unlock
-        userToLBPData[msg.sender].bptUnlockTimestamp = uint96(timestampInYear);
-    }
-
-    function withdrawBalancerPoolTokens() external {
-        uint256 unlockTimestamp = userToLBPData[msg.sender].bptUnlockTimestamp;
-        if (unlockTimestamp == 0) revert NotAUser();
-        if (unlockTimestamp > block.timestamp) revert TokensLockedUntilTimestamp(unlockTimestamp);
-        userToLBPData[msg.sender].bptUnlockTimestamp = 0;
-
-        IERC20 lbp = IERC20(userToLBPData[msg.sender].lbp);
-        uint256 bptAmount = lbp.balanceOf(address(this));
-        lbp.transfer(msg.sender, bptAmount);
+        emit CirclesBackingCompleted(backer, backingAsset, msg.sender, lbp, personalCRC);
     }
 
     /// @notice General wrapper function over vault.exitPool, allows to extract
@@ -308,11 +311,5 @@ contract CirclesBackingFactory {
 
     function _symbol(address inflationaryCirlces) internal view returns (string memory) {
         return string(abi.encodePacked(LBP_PREFIX, IERC20Metadata(inflationaryCirlces).symbol()));
-    }
-
-    function _endWeights() internal pure returns (uint256[] memory endWeights) {
-        endWeights = new uint256[](2);
-        endWeights[0] = WEIGHT_50;
-        endWeights[1] = WEIGHT_50;
     }
 }

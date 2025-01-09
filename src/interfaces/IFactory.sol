@@ -6,4 +6,7 @@ interface IFactory {
         external
         pure
         returns (string memory appDataString, bytes32 appDataHash);
+    function createLBP(address personalCRC, address backingAsset, uint256 backingAssetAmount)
+        external
+        returns (address lbp);
 }

@@ -29,7 +29,7 @@ curl -X 'POST' \
   -d '{
   "sellToken": "0xe91D153E0b41518A2Ce8Dd3D7944Fa863463a97d",
   "buyToken": "0x9C58BAcC331c9aa871AFD802DB6379a98e80CEdb",
-  "receiver": "0xeb2EE204c0E15184E4f4a2189d1c07ffb611D635",
+  "receiver": "0xEA39b6F8F98f91ECCe24A5601FD02DF850d3eC3E",
   "sellAmount": "100000000000000000",
   "buyAmount": "1",
   "validTo": 1894006860,
@@ -40,7 +40,7 @@ curl -X 'POST' \
   "buyTokenBalance": "erc20",
   "signingScheme": "presign",
   "signature": "0x",
-  "from": "0xeb2EE204c0E15184E4f4a2189d1c07ffb611D635",
-  "appData": "{\"version\":\"1.1.0\",\"appCode\":\"Zeal powered by Qantura\",\"metadata\":{\"hooks\":{\"version\":\"0.1.0\",\"post\":[{\"target\":\"0xeb2ee204c0e15184e4f4a2189d1c07ffb611d635\",\"callData\":\"0xbb5ae136\",\"gasLimit\":\"200000\"}]}}}"
+  "from": "0xEA39b6F8F98f91ECCe24A5601FD02DF850d3eC3E",
+  "appData": "{\"version\":\"1.1.0\",\"appCode\":\"Zeal powered by Qantura\",\"metadata\":{\"hooks\":{\"version\":\"0.1.0\",\"post\":[{\"target\":\"0xea39b6f8f98f91ecce24a5601fd02df850d3ec3e\",\"callData\":\"0xbb5ae136\",\"gasLimit\":\"200000\"}]}}}"
 }'
 */
