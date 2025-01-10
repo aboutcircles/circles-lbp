@@ -117,7 +117,6 @@ contract CirclesBackingFactory {
         supportedBackingAssets[address(0x6A023CCd1ff6F2045C3309768eAd9E68F978f6e1)] = true; // WETH
         supportedBackingAssets[address(0x9C58BAcC331c9aa871AFD802DB6379a98e80CEdb)] = true; // GNO
         supportedBackingAssets[address(0xaf204776c7245bF4147c2612BF6e5972Ee483701)] = true; // sDAI
-        supportedBackingAssets[USDC] = true; // USDC
     }
 
     // Admin logic
@@ -126,8 +125,8 @@ contract CirclesBackingFactory {
     function setReleaseTimestamp(uint32 timestamp) external onlyAdmin {
         releaseTimestamp = timestamp;
     }
-    /// @notice Method sets supported status for backing asset.
 
+    /// @notice Method sets supported status for backing asset.
     function setSupportedBackingAssetStatus(address backingAsset, bool status) external onlyAdmin {
         supportedBackingAssets[backingAsset] = status;
     }

@@ -132,7 +132,7 @@ contract CirclesBacking {
     // Balancer pool tokens
 
     /// @notice Method allows backer to claim balancer pool tokens after lock period or in case of global release.
-    function claimBalancerPoolTokens() external {
+    function releaseBalancerPoolTokens() external {
         if (msg.sender != backer) revert NotBacker();
 
         if (FACTORY.releaseTimestamp() > uint32(block.timestamp)) {
