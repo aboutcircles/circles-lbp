@@ -30,18 +30,24 @@ contract CirclesBackingFactory {
     /// Exit Liquidity Bootstraping Pool supports only two tokens pools.
     error OnlyTwoTokenLBPSupported();
 
+    // Events
     /// @notice Emitted when a CirclesBacking is created.
     event CirclesBackingDeployed(address indexed backer, address indexed circlesBackingInstance);
     /// @notice Emitted when a LBP is created.
-    event LBPCreated(address indexed circlesBackingInstance, address indexed lbp);
-
+    event LBPDeployed(address indexed circlesBackingInstance, address indexed lbp);
+    /// @notice Emitted when a Circles backing process is initiated.
     event CirclesBackingInitiated(
         address indexed backer,
         address indexed circlesBackingInstance,
         address backingAsset,
         address personalCirclesAddress
     );
+    /// @notice Emitted when a Circles backing process is completed.
     event CirclesBackingCompleted(address indexed backer, address indexed circlesBackingInstance, address lbp);
+
+    // Constants
+    /// @notice Address allowed to set supported backing assets and global bpt release timestamp.
+    address public immutable ADMIN;
 
     // Cowswap order constants.
     /// @notice Helper contract for crafting Uid.
@@ -81,18 +87,22 @@ contract CirclesBackingFactory {
     ILiftERC20 public constant LIFT_ERC20 = ILiftERC20(address(0x5F99a795dD2743C36D63511f0D4bc667e6d3cDB5));
     /// @notice Amount of InflationaryCircles to use in LBP initial liquidity.
     uint256 public constant CRC_AMOUNT = 48 ether;
-    /// @notice Address allowed to set supported backing assets and global bpt release timestamp.
-    address public immutable ADMIN;
 
+    // Storage
+    /// @notice Stores supported assets.
     mapping(address supportedAsset => bool) public supportedBackingAssets;
+    /// @notice Links CirclesBacking instances to their creators.
     mapping(address circleBacking => address backer) public backerOf;
+    /// @notice Global release timestamp for balancer pool tokens.
     uint32 public releaseTimestamp = type(uint32).max;
 
+    // Modifier
     modifier onlyAdmin() {
         if (msg.sender != ADMIN) revert NotAdmin();
         _;
     }
 
+    // Constructor
     constructor(address admin) {
         ADMIN = admin;
         VALID_TO = uint32(block.timestamp + 1825 days);
@@ -102,6 +112,20 @@ contract CirclesBackingFactory {
         supportedBackingAssets[address(0xaf204776c7245bF4147c2612BF6e5972Ee483701)] = true; // sDAI
         supportedBackingAssets[USDC] = true; // USDC
     }
+
+    // Admin logic
+
+    /// @notice Method sets global release timestamp for unlocking balancer pool tokens.
+    function setReleaseTimestamp(uint32 timestamp) external onlyAdmin {
+        releaseTimestamp = timestamp;
+    }
+    /// @notice Method sets supported status for backing asset.
+
+    function setSupportedBackingAssetStatus(address backingAsset, bool status) external onlyAdmin {
+        supportedBackingAssets[backingAsset] = status;
+    }
+
+    // Backing logic
 
     // @dev Required upfront approval of this contract for CRC and USDC.e
     function startBacking(address backingAsset) external {
@@ -155,84 +179,12 @@ contract CirclesBackingFactory {
         emit CirclesBackingInitiated(msg.sender, instance, backingAsset, personalCirclesAddress);
     }
 
-    // personal circles
-
-    // @dev this call will revert, if avatar is not registered as human or group in Hub contract
-    function getPersonalCircles(address avatar) public view returns (address inflationaryCircles) {
-        inflationaryCircles = LIFT_ERC20.erc20Circles(uint8(1), avatar);
-        // TODO: find capacity to understand why i had this revert
-        //if (inflationaryCircles == address(0)) revert InflationaryCirclesNotExists(avatar);
-    }
-
-    // cowswap app data
-
-    function getAppData(address _circlesBackingInstance)
-        public
-        pure
-        returns (string memory appDataString, bytes32 appDataHash)
-    {
-        string memory instanceAddressStr = addressToString(_circlesBackingInstance);
-        appDataString = string.concat(preAppData, instanceAddressStr, postAppData);
-        appDataHash = keccak256(bytes(appDataString));
-    }
-
-    function addressToString(address _addr) internal pure returns (string memory) {
-        bytes32 value = bytes32(uint256(uint160(_addr)));
-        bytes memory alphabet = "0123456789abcdef";
-
-        bytes memory str = new bytes(42);
-        str[0] = "0";
-        str[1] = "x";
-
-        for (uint256 i = 0; i < 20; i++) {
-            str[2 + i * 2] = alphabet[uint8(value[i + 12] >> 4)];
-            str[3 + i * 2] = alphabet[uint8(value[i + 12] & 0x0f)];
-        }
-
-        return string(str);
-    }
-
-    // deploy instance
-    /**
-     * @notice Deploys a new CirclesBacking contract with CREATE2.
-     * @param backer Address which is backing circles.
-     * @return deployedAddress Address of the deployed contract.
-     */
-    function deployCirclesBacking(address backer) internal returns (address deployedAddress) {
-        // open question: do we want backer to be able to create only one backing? - this is how it is now.
-        // or we allow backer to create multiple backings, 1 per supported backing asset - need to add backing asset to salt.
-        bytes32 salt_ = keccak256(abi.encodePacked(backer));
-
-        deployedAddress = address(new CirclesBacking{salt: salt_}());
-
-        if (deployedAddress == address(0) || deployedAddress.code.length == 0) {
-            revert CirclesBackingDeploymentFailed(backer);
-        }
-
-        // link instance to backer
-        backerOf[deployedAddress] = backer;
-
-        emit CirclesBackingDeployed(backer, deployedAddress);
-    }
-
-    // counterfactual
-    /**
-     * @notice Computes the deterministic address for CirclesBacking contract.
-     * @param backer Address which is backing circles.
-     * @return predictedAddress Predicted address of the deployed contract.
-     */
-    function computeAddress(address backer) external view returns (address predictedAddress) {
-        bytes32 salt = keccak256(abi.encodePacked(backer));
-        bytes memory bytecode = type(CirclesBacking).creationCode;
-        predictedAddress = address(
-            uint160(uint256(keccak256(abi.encodePacked(bytes1(0xff), address(this), salt, keccak256(bytecode)))))
-        );
-    }
-
     // LBP logic
 
     /// @notice Creates LBP with underlying assets: `backingAssetAmount` backingAsset(`backingAsset`) and `CRC_AMOUNT` InflationaryCircles(`personalCRC`).
-    /// @param personalCRC .
+    /// @param personalCRC Address of InflationaryCircles (stable ERC20) used as underlying asset in lbp.
+    /// @param backingAsset Address of backing asset used as underlying asset in lbp.
+    /// @param backingAssetAmount Amount of backing asset used in lbp.
     function createLBP(address personalCRC, address backingAsset, uint256 backingAssetAmount)
         external
         returns (address lbp, bytes32 poolId, IVault.JoinPoolRequest memory request)
@@ -261,7 +213,7 @@ contract CirclesBackingFactory {
             true // enable swap on start
         );
 
-        emit LBPCreated(backer, lbp);
+        emit LBPDeployed(msg.sender, lbp);
 
         poolId = ILBP(lbp).getPoolId();
 
@@ -274,15 +226,6 @@ contract CirclesBackingFactory {
         request = IVault.JoinPoolRequest(tokens, amountsIn, userData, false);
 
         emit CirclesBackingCompleted(backer, msg.sender, lbp);
-    }
-
-    // ADMIN logic
-    function setReleaseTimestamp(uint32 timestamp) external onlyAdmin {
-        releaseTimestamp = timestamp;
-    }
-
-    function setSupportedBackingAssetStatus(address backingAsset, bool status) external onlyAdmin {
-        supportedBackingAssets[backingAsset] = status;
     }
 
     /// @notice General wrapper function over vault.exitPool, allows to extract
@@ -312,12 +255,92 @@ contract CirclesBackingFactory {
         );
     }
 
+    // View functions
+
+    // counterfactual
+    /**
+     * @notice Computes the deterministic address for CirclesBacking contract.
+     * @param backer Address which is backing circles.
+     * @return predictedAddress Predicted address of the deployed contract.
+     */
+    function computeAddress(address backer) external view returns (address predictedAddress) {
+        bytes32 salt = keccak256(abi.encodePacked(backer));
+        bytes memory bytecode = type(CirclesBacking).creationCode;
+        predictedAddress = address(
+            uint160(uint256(keccak256(abi.encodePacked(bytes1(0xff), address(this), salt, keccak256(bytecode)))))
+        );
+    }
+
+    // cowswap app data
+    /// @notice Returns stringified json and its hash representing app data for Cowswap.
+    function getAppData(address _circlesBackingInstance)
+        public
+        pure
+        returns (string memory appDataString, bytes32 appDataHash)
+    {
+        string memory instanceAddressStr = addressToString(_circlesBackingInstance);
+        appDataString = string.concat(preAppData, instanceAddressStr, postAppData);
+        appDataHash = keccak256(bytes(appDataString));
+    }
+
+    // personal circles
+    /// @notice Returns address of avatar InflationaryCircles.
+    /// @dev this call will revert, if avatar is not registered as human or group in Hub contract
+    function getPersonalCircles(address avatar) public view returns (address inflationaryCircles) {
+        inflationaryCircles = LIFT_ERC20.erc20Circles(uint8(1), avatar);
+        // TODO: find capacity to understand why i had this revert
+        //if (inflationaryCircles == address(0)) revert InflationaryCirclesNotExists(avatar);
+    }
+
     // Internal functions
 
+    // deploy instance
+    /**
+     * @notice Deploys a new CirclesBacking contract with CREATE2.
+     * @param backer Address which is backing circles.
+     * @return deployedAddress Address of the deployed contract.
+     */
+    function deployCirclesBacking(address backer) internal returns (address deployedAddress) {
+        // open question: do we want backer to be able to create only one backing? - this is how it is now.
+        // or we allow backer to create multiple backings, 1 per supported backing asset - need to add backing asset to salt.
+        bytes32 salt_ = keccak256(abi.encodePacked(backer));
+
+        deployedAddress = address(new CirclesBacking{salt: salt_}());
+
+        if (deployedAddress == address(0) || deployedAddress.code.length == 0) {
+            revert CirclesBackingDeploymentFailed(backer);
+        }
+
+        // link instance to backer
+        backerOf[deployedAddress] = backer;
+
+        emit CirclesBackingDeployed(backer, deployedAddress);
+    }
+
+    // cowswap app data helper
+    /// @dev returns string as address value
+    function addressToString(address _addr) internal pure returns (string memory) {
+        bytes32 value = bytes32(uint256(uint160(_addr)));
+        bytes memory alphabet = "0123456789abcdef";
+
+        bytes memory str = new bytes(42);
+        str[0] = "0";
+        str[1] = "x";
+
+        for (uint256 i = 0; i < 20; i++) {
+            str[2 + i * 2] = alphabet[uint8(value[i + 12] >> 4)];
+            str[3 + i * 2] = alphabet[uint8(value[i + 12] & 0x0f)];
+        }
+
+        return string(str);
+    }
+
+    // personal circles lbp name
     function _name(address inflationaryCirlces) internal view returns (string memory) {
         return string(abi.encodePacked(LBP_PREFIX, IERC20Metadata(inflationaryCirlces).name()));
     }
 
+    // personal circles lbp symbol
     function _symbol(address inflationaryCirlces) internal view returns (string memory) {
         return string(abi.encodePacked(LBP_PREFIX, IERC20Metadata(inflationaryCirlces).symbol()));
     }
