@@ -12,6 +12,8 @@ contract CirclesBacking {
     error AlreadyInitialized();
     /// Function must be called only by Cowswap posthook.
     error OrderNotFilledYet();
+    /// LBP is already created.
+    error AlreadyCreated();
     /// Cowswap solver must transfer the swap result before calling posthook.
     error InsufficientBackingAssetBalance();
     /// Unauthorized access.
@@ -76,6 +78,7 @@ contract CirclesBacking {
         // Check if the order has been filled on the CowSwap settlement contract
         uint256 filledAmount = COWSWAP_SETTLEMENT.filledAmount(storedOrderUid);
         if (filledAmount == 0) revert OrderNotFilledYet();
+        if (lbp != address(0)) revert AlreadyCreated();
 
         // Backing asset balance of the contract
         uint256 backingAssetBalance = IERC20(backingAsset).balanceOf(address(this));
@@ -84,7 +87,6 @@ contract CirclesBacking {
         // Create LBP
         bytes32 poolId;
         IVault.JoinPoolRequest memory request;
-
         (lbp, poolId, request) = FACTORY.createLBP(personalCircles, backingAsset, backingAssetBalance);
 
         // approve vault
@@ -105,23 +107,19 @@ contract CirclesBacking {
 
         // set bpt unlock
         balancerPoolTokensUnlockTimestamp = timestampInYear;
-
-        // need to lock, so only 1 call
     }
 
     function claimBalancerPoolTokens() external {
         if (msg.sender != backer) revert NotBacker();
-        /*
-        if ()
 
-        if (unlockTimestamp == 0) revert NotAUser();
-        if (unlockTimestamp > block.timestamp) revert TokensLockedUntilTimestamp(unlockTimestamp);
-        userToLBPData[msg.sender].bptUnlockTimestamp = 0;
+        if (!FACTORY.releaseAvailable()) {
+            if (balancerPoolTokensUnlockTimestamp > block.timestamp) {
+                revert TokensLockedUntilTimestamp(balancerPoolTokensUnlockTimestamp);
+            }
+        }
 
-        IERC20 lbp = IERC20(userToLBPData[msg.sender].lbp);
-        uint256 bptAmount = lbp.balanceOf(address(this));
-        lbp.transfer(msg.sender, bptAmount);
-        */
+        uint256 bptAmount = IERC20(lbp).balanceOf(address(this));
+        IERC20(lbp).transfer(msg.sender, bptAmount);
     }
 
     function _endWeights() internal pure returns (uint256[] memory endWeights) {

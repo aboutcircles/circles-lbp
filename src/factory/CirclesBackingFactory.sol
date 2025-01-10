@@ -86,6 +86,7 @@ contract CirclesBackingFactory {
 
     mapping(address supportedAsset => bool) public supportedBackingAssets;
     mapping(address circleBacking => address backer) public backerOf;
+    bool public releaseAvailable;
 
     constructor() {
         VALID_TO = uint32(block.timestamp + 1825 days);
