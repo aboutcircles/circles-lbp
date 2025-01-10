@@ -3,11 +3,12 @@ pragma solidity ^0.8.28;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ICowswapSettlement} from "src/interfaces/ICowswapSettlement.sol";
-import {IFactory} from "src/interfaces/IFactory.sol"; // temporary solution
+import {IFactory} from "src/interfaces/IFactory.sol";
 import {ILBP} from "src/interfaces/ILBP.sol";
 import {IVault} from "src/interfaces/IVault.sol";
 
 contract CirclesBacking {
+    // Errors
     /// Already initialized.
     error AlreadyInitialized();
     /// Function must be called only by Cowswap posthook.
@@ -18,35 +19,47 @@ contract CirclesBacking {
     error InsufficientBackingAssetBalance();
     /// Unauthorized access.
     error NotBacker();
-    /// Balancer Pool Tokens are still locked.
+    /// Balancer Pool Tokens are still locked until `timestamp`.
     error TokensLockedUntilTimestamp(uint256 timestamp);
 
+    // Events
+    /// @notice Emitted when Cowswap order is created, logging order uid.
+    event OrderCreated(bytes orderUid);
+
+    // Constants
+    /// @notice Gnosis Protocol v2 Settlement Contract.
     ICowswapSettlement public constant COWSWAP_SETTLEMENT =
         ICowswapSettlement(address(0x9008D19f58AAbD9eD0D60971565AA8510560ab41));
+    /// @notice Gnosis Protocol v2 Vault Relayer Contract.
     address public constant VAULT_RELAY = 0xC92E8bdf79f0507f65a392b0ab4667716BFE0110;
-    address public constant VAULT_BALANCER = address(0xBA12222222228d8Ba445958a75a0704d566BF2C8);
+    /// @dev Circles Backing Factory.
     IFactory internal immutable FACTORY;
-    /// @notice Amount of InflationaryCircles to use in LBP initial liquidity.
-    uint256 public constant CRC_AMOUNT = 48 ether;
     /// @dev LBP token weight 50%.
     uint256 internal constant WEIGHT_50 = 0.5 ether;
-    /// @dev Update weight duration is set to 1 year.
+    /// @dev Update weight duration and lbp lock period is set to 1 year.
     uint256 internal constant UPDATE_WEIGHT_DURATION = 365 days;
 
+    // Storage
+    /// @notice Address of circles avatar, which has backed his personal circles.
     address public backer;
+    /// @notice Address of one of supported assets, which was used to back circles.
     address public backingAsset;
+    /// @notice Address of ERC20 stable circles version (InlationaryCircles), which is used as underlying asset in lbp.
     address public personalCircles;
+    /// @notice Address of created Liquidity Bootstrapping Pool, which represents backing liquidity.
     address public lbp;
+    /// @notice Timestamp, when locked balancer pool tokens are allowed to be claimed by backer.
     uint256 public balancerPoolTokensUnlockTimestamp;
-
+    /// @notice Cowswap order uid.
     bytes public storedOrderUid;
-
-    event OrderCreated(bytes orderUid);
 
     constructor() {
         FACTORY = IFactory(msg.sender);
     }
 
+    // Backing logic
+
+    /// @notice Initiates core values and backing process, approves Cowswap to spend USDC and presigns order.
     function initiateBacking(
         address _backer,
         address _backingAsset,
@@ -74,6 +87,8 @@ contract CirclesBacking {
         emit OrderCreated(orderUid);
     }
 
+    /// @notice Method, which should be used as Cowswap posthook interaction.
+    ///         Creates preconfigured LBP and provides liquidity to it.
     function createLBP() external {
         // Check if the order has been filled on the CowSwap settlement contract
         uint256 filledAmount = COWSWAP_SETTLEMENT.filledAmount(storedOrderUid);
@@ -87,14 +102,17 @@ contract CirclesBacking {
         // Create LBP
         bytes32 poolId;
         IVault.JoinPoolRequest memory request;
-        (lbp, poolId, request) = FACTORY.createLBP(personalCircles, backingAsset, backingAssetBalance);
+        address vault;
+        uint256 circlesAmount;
+        (lbp, poolId, request, vault, circlesAmount) =
+            FACTORY.createLBP(personalCircles, backingAsset, backingAssetBalance);
 
         // approve vault
-        IERC20(personalCircles).approve(VAULT_BALANCER, backingAssetBalance);
-        IERC20(backingAsset).approve(VAULT_BALANCER, CRC_AMOUNT);
+        IERC20(personalCircles).approve(vault, backingAssetBalance);
+        IERC20(backingAsset).approve(vault, circlesAmount);
 
         // provide liquidity into lbp
-        IVault(VAULT_BALANCER).joinPool(
+        IVault(vault).joinPool(
             poolId,
             address(this), // sender
             address(this), // recipient
@@ -109,6 +127,9 @@ contract CirclesBacking {
         balancerPoolTokensUnlockTimestamp = timestampInYear;
     }
 
+    // Balancer pool tokens
+
+    /// @notice Method allows backer to claim balancer pool tokens after lock period or in case of global release.
     function claimBalancerPoolTokens() external {
         if (msg.sender != backer) revert NotBacker();
 
@@ -121,6 +142,8 @@ contract CirclesBacking {
         uint256 bptAmount = IERC20(lbp).balanceOf(address(this));
         IERC20(lbp).transfer(msg.sender, bptAmount);
     }
+
+    // Internal functions
 
     function _endWeights() internal pure returns (uint256[] memory endWeights) {
         endWeights = new uint256[](2);

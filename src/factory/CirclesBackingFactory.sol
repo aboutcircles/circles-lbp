@@ -17,6 +17,7 @@ import {CirclesBacking} from "src/CirclesBacking.sol";
  *         Administrates supported backing assets and global balancer pool tokens release.
  */
 contract CirclesBackingFactory {
+    // Errors
     /// Circles backing does not support `requestedAsset` asset.
     error UnsupportedBackingAsset(address requestedAsset);
     /// Deployment of CirclesBacking instance initiated by user `backer` has failed.
@@ -187,10 +188,19 @@ contract CirclesBackingFactory {
     /// @param backingAssetAmount Amount of backing asset used in lbp.
     function createLBP(address personalCRC, address backingAsset, uint256 backingAssetAmount)
         external
-        returns (address lbp, bytes32 poolId, IVault.JoinPoolRequest memory request)
+        returns (
+            address lbp,
+            bytes32 poolId,
+            IVault.JoinPoolRequest memory request,
+            address vault,
+            uint256 circlesAmount
+        )
     {
         address backer = backerOf[msg.sender];
         if (backer == address(0)) revert OnlyCirclesBacking();
+
+        vault = VAULT;
+        circlesAmount = CRC_AMOUNT; // naturally to use stack value further as we have to return it anyway, but need to check what is cheaper constant or stack.
 
         // prepare inputs
         IERC20[] memory tokens = new IERC20[](2);
