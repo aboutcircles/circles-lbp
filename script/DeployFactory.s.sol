@@ -13,7 +13,7 @@ contract DeployFactory is Script {
     function run() public {
         vm.startBroadcast(deployer);
 
-        circlesBackingFactory = new CirclesBackingFactory();
+        circlesBackingFactory = new CirclesBackingFactory(deployer);
 
         vm.stopBroadcast();
         console.log(address(circlesBackingFactory), "CirclesBackingFactory");

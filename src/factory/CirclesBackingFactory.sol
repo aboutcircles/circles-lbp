@@ -14,7 +14,7 @@ import {CirclesBacking} from "src/CirclesBacking.sol";
 /**
  * @title Circles Backing Factory.
  * @notice Contract allows to create CircleBacking instances.
- *         Factory should have an admin function to make release of lbp for everyone.
+ *         Administrates supported backing assets and global balancer pool tokens release.
  */
 contract CirclesBackingFactory {
     /// Circles backing does not support `requestedAsset` asset.
@@ -25,10 +25,8 @@ contract CirclesBackingFactory {
     error PersonalCirclesApprovalIsMissing();
     /// Method can be called only by instance of CirclesBacking deployed by this factory.
     error OnlyCirclesBacking();
-    /// Method requires exact `requiredXDai` xDai amount, was provided: `providedXDai`.
-    error NotExactXDaiAmount(uint256 providedXDai, uint256 requiredXDai);
-    /// LBP was created previously, currently only 1 LBP per user can be created.
-    error OnlyOneLBPPerUser();
+    /// Unauthorized access.
+    error NotAdmin();
     /// Exit Liquidity Bootstraping Pool supports only two tokens pools.
     error OnlyTwoTokenLBPSupported();
 
@@ -83,12 +81,20 @@ contract CirclesBackingFactory {
     ILiftERC20 public constant LIFT_ERC20 = ILiftERC20(address(0x5F99a795dD2743C36D63511f0D4bc667e6d3cDB5));
     /// @notice Amount of InflationaryCircles to use in LBP initial liquidity.
     uint256 public constant CRC_AMOUNT = 48 ether;
+    /// @notice Address allowed to set supported backing assets and global bpt release timestamp.
+    address public immutable ADMIN;
 
     mapping(address supportedAsset => bool) public supportedBackingAssets;
     mapping(address circleBacking => address backer) public backerOf;
-    bool public releaseAvailable;
+    uint32 public releaseTimestamp = type(uint32).max;
 
-    constructor() {
+    modifier onlyAdmin() {
+        if (msg.sender != ADMIN) revert NotAdmin();
+        _;
+    }
+
+    constructor(address admin) {
+        ADMIN = admin;
         VALID_TO = uint32(block.timestamp + 1825 days);
         supportedBackingAssets[address(0x8e5bBbb09Ed1ebdE8674Cda39A0c169401db4252)] = true; // WBTC
         supportedBackingAssets[address(0x6A023CCd1ff6F2045C3309768eAd9E68F978f6e1)] = true; // WETH
@@ -223,9 +229,6 @@ contract CirclesBackingFactory {
         );
     }
 
-    // admin logic
-    // TODO
-
     // LBP logic
 
     /// @notice Creates LBP with underlying assets: `backingAssetAmount` backingAsset(`backingAsset`) and `CRC_AMOUNT` InflationaryCircles(`personalCRC`).
@@ -271,6 +274,15 @@ contract CirclesBackingFactory {
         request = IVault.JoinPoolRequest(tokens, amountsIn, userData, false);
 
         emit CirclesBackingCompleted(backer, msg.sender, lbp);
+    }
+
+    // ADMIN logic
+    function setReleaseTimestamp(uint32 timestamp) external onlyAdmin {
+        releaseTimestamp = timestamp;
+    }
+
+    function setSupportedBackingAssetStatus(address backingAsset, bool status) external onlyAdmin {
+        supportedBackingAssets[backingAsset] = status;
     }
 
     /// @notice General wrapper function over vault.exitPool, allows to extract

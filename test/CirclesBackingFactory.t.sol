@@ -92,6 +92,7 @@ contract MockJoin {
 
 contract CirclesBackingFactoryTest is Test {
     CirclesBackingFactory public factory;
+    address factoryAdmin = address(0x4583759874359754305480345);
     MockJoin public mockJoin;
     address testAccount = address(0x458437598234234234);
     address personalCRC;
@@ -105,7 +106,7 @@ contract CirclesBackingFactoryTest is Test {
     function setUp() public {
         gnosis = vm.createFork(vm.envString("GNOSIS_RPC"), blockNumber);
         vm.selectFork(gnosis);
-        factory = new CirclesBackingFactory();
+        factory = new CirclesBackingFactory(factoryAdmin);
         mockJoin = new MockJoin();
         personalCRC = address(new MockToken("crc", "crc", 10_000 ether));
         IERC20(personalCRC).transfer(testAccount, 10_000 ether);

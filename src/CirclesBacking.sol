@@ -112,7 +112,7 @@ contract CirclesBacking {
     function claimBalancerPoolTokens() external {
         if (msg.sender != backer) revert NotBacker();
 
-        if (!FACTORY.releaseAvailable()) {
+        if (FACTORY.releaseTimestamp() > uint32(block.timestamp)) {
             if (balancerPoolTokensUnlockTimestamp > block.timestamp) {
                 revert TokensLockedUntilTimestamp(balancerPoolTokensUnlockTimestamp);
             }

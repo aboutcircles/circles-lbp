@@ -11,5 +11,5 @@ interface IFactory {
     function createLBP(address personalCRC, address backingAsset, uint256 backingAssetAmount)
         external
         returns (address lbp, bytes32 poolId, IVault.JoinPoolRequest memory request);
-    function releaseAvailable() external view returns (bool);
+    function releaseTimestamp() external view returns (uint32);
 }
