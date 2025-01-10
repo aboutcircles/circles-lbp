@@ -8,14 +8,8 @@ interface IFactory {
         external
         pure
         returns (string memory appDataString, bytes32 appDataHash);
-    function createLBP(address personalCRC, address backingAsset, uint256 backingAssetAmount)
+    function createLBP(address personalCRC, uint256 personalCRCAmount, address backingAsset, uint256 backingAssetAmount)
         external
-        returns (
-            address lbp,
-            bytes32 poolId,
-            IVault.JoinPoolRequest memory request,
-            address vault,
-            uint256 circlesAmount
-        );
+        returns (address lbp, bytes32 poolId, IVault.JoinPoolRequest memory request, address vault);
     function releaseTimestamp() external view returns (uint32);
 }

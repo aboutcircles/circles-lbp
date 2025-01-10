@@ -48,6 +48,7 @@ contract CirclesBacking {
     address public personalCircles;
     /// @notice Address of created Liquidity Bootstrapping Pool, which represents backing liquidity.
     address public lbp;
+    uint256 stableCirclesAmount;
     /// @notice Timestamp, when locked balancer pool tokens are allowed to be claimed by backer.
     uint256 public balancerPoolTokensUnlockTimestamp;
     /// @notice Cowswap order uid.
@@ -66,13 +67,15 @@ contract CirclesBacking {
         address _personalCircles,
         bytes memory orderUid,
         address usdc,
-        uint256 tradeAmount
+        uint256 tradeAmount,
+        uint256 stableCRCAmount
     ) external {
         if (backer != address(0)) revert AlreadyInitialized();
         // init
         backer = _backer;
         backingAsset = _backingAsset;
         personalCircles = _personalCircles;
+        stableCirclesAmount = stableCRCAmount;
 
         // Approve USDC to Vault Relay contract
         IERC20(usdc).approve(VAULT_RELAY, tradeAmount);
@@ -103,13 +106,12 @@ contract CirclesBacking {
         bytes32 poolId;
         IVault.JoinPoolRequest memory request;
         address vault;
-        uint256 circlesAmount;
-        (lbp, poolId, request, vault, circlesAmount) =
-            FACTORY.createLBP(personalCircles, backingAsset, backingAssetBalance);
+        (lbp, poolId, request, vault) =
+            FACTORY.createLBP(personalCircles, stableCirclesAmount, backingAsset, backingAssetBalance);
 
         // approve vault
-        IERC20(personalCircles).approve(vault, backingAssetBalance);
-        IERC20(backingAsset).approve(vault, circlesAmount);
+        IERC20(personalCircles).approve(vault, stableCirclesAmount);
+        IERC20(backingAsset).approve(vault, backingAssetBalance);
 
         // provide liquidity into lbp
         IVault(vault).joinPool(

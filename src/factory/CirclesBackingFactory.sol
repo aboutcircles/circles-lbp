@@ -18,6 +18,12 @@ import {CirclesBacking} from "src/CirclesBacking.sol";
  */
 contract CirclesBackingFactory {
     // Errors
+    /// Only HubV2 allowed to call.
+    error OnlyHub();
+    /// Received CRC amount is `received`, required CRC amount is `required`.
+    error NotExactlyRequiredCRCAmount(uint256 required, uint256 received);
+    /// Backing in favor is dissalowed. Back only your personal CRC.
+    error BackingInFavorDissalowed();
     /// Circles backing does not support `requestedAsset` asset.
     error UnsupportedBackingAsset(address requestedAsset);
     /// Deployment of CirclesBacking instance initiated by user `backer` has failed.
@@ -128,33 +134,19 @@ contract CirclesBackingFactory {
 
     // Backing logic
 
-    // @dev Required upfront approval of this contract for CRC and USDC.e
-    function startBacking(address backingAsset) external {
+    /// @dev Required upfront approval of this contract for USDC.e
+    /// @dev Is called inside onERC1155Received callback by Hub call Circles 1155 transferFrom.
+    function startBacking(address backer, address backingAsset, address stableCRCAddress, uint256 stableCRCAmount)
+        internal
+    {
         if (!supportedBackingAssets[backingAsset]) revert UnsupportedBackingAsset(backingAsset);
 
-        address instance = deployCirclesBacking(msg.sender);
+        address instance = deployCirclesBacking(backer);
 
-        address personalCirclesAddress = getPersonalCircles(msg.sender);
-        // handling personal CRC: 1. try to get Inflationary, if fails 2. try to get 1155 and wrap, if fails revert
-        try IERC20(personalCirclesAddress).transferFrom(msg.sender, instance, CRC_AMOUNT) {}
-        catch {
-            try HUB_V2.safeTransferFrom(msg.sender, address(this), uint256(uint160(msg.sender)), CRC_AMOUNT, "") {
-                // NOTE: for now this flow always reverts as not fully implemented
-                // Reason why not implemented except lack of time is that we might make startBacking internal function called inside
-                // IERC1155Receiver.onERC1155Received and the whole handling personal CRC flow will be refactored.
-                // TODO:
-                //  0. implement IERC1155Receiver.onERC1155Received here
-                //  1. define the exact erc1155 circles amount to get based on constant of erc20 inflationary constant
-                //  2. call wrap on HUB_V2 with the exact erc1155 circles amount and type = 1 (infationary)
-                //  3. check erc20 inflationary balance of address(this) equal CRC_AMOUNT
-                //  4. transfer to instance
-            } catch {
-                revert PersonalCirclesApprovalIsMissing();
-            }
-        }
-
-        // handling USDC.e
-        IERC20(USDC).transferFrom(msg.sender, instance, TRADE_AMOUNT);
+        // transfer USDC.e
+        IERC20(USDC).transferFrom(backer, instance, TRADE_AMOUNT);
+        // transfer stable circles
+        IERC20(stableCRCAddress).transfer(instance, stableCRCAmount);
 
         // create order
         (, bytes32 appData) = getAppData(instance);
@@ -175,9 +167,9 @@ contract CirclesBackingFactory {
         bytes memory orderUid = abi.encodePacked(orderDigest, instance, uint32(VALID_TO));
         // Initiate backing
         CirclesBacking(instance).initiateBacking(
-            msg.sender, backingAsset, personalCirclesAddress, orderUid, USDC, TRADE_AMOUNT
+            backer, backingAsset, stableCRCAddress, orderUid, USDC, TRADE_AMOUNT, stableCRCAmount
         );
-        emit CirclesBackingInitiated(msg.sender, instance, backingAsset, personalCirclesAddress);
+        emit CirclesBackingInitiated(backer, instance, backingAsset, stableCRCAddress);
     }
 
     // LBP logic
@@ -186,21 +178,12 @@ contract CirclesBackingFactory {
     /// @param personalCRC Address of InflationaryCircles (stable ERC20) used as underlying asset in lbp.
     /// @param backingAsset Address of backing asset used as underlying asset in lbp.
     /// @param backingAssetAmount Amount of backing asset used in lbp.
-    function createLBP(address personalCRC, address backingAsset, uint256 backingAssetAmount)
+    function createLBP(address personalCRC, uint256 personalCRCAmount, address backingAsset, uint256 backingAssetAmount)
         external
-        returns (
-            address lbp,
-            bytes32 poolId,
-            IVault.JoinPoolRequest memory request,
-            address vault,
-            uint256 circlesAmount
-        )
+        returns (address lbp, bytes32 poolId, IVault.JoinPoolRequest memory request, address vault)
     {
         address backer = backerOf[msg.sender];
         if (backer == address(0)) revert OnlyCirclesBacking();
-
-        vault = VAULT;
-        circlesAmount = CRC_AMOUNT; // naturally to use stack value further as we have to return it anyway, but need to check what is cheaper constant or stack.
 
         // prepare inputs
         IERC20[] memory tokens = new IERC20[](2);
@@ -228,12 +211,13 @@ contract CirclesBackingFactory {
         poolId = ILBP(lbp).getPoolId();
 
         uint256[] memory amountsIn = new uint256[](2);
-        amountsIn[0] = tokenZero ? CRC_AMOUNT : backingAssetAmount;
-        amountsIn[1] = tokenZero ? backingAssetAmount : CRC_AMOUNT;
+        amountsIn[0] = tokenZero ? personalCRCAmount : backingAssetAmount;
+        amountsIn[1] = tokenZero ? backingAssetAmount : personalCRCAmount;
 
         bytes memory userData = abi.encode(ILBP.JoinKind.INIT, amountsIn);
 
         request = IVault.JoinPoolRequest(tokens, amountsIn, userData, false);
+        vault = VAULT;
 
         emit CirclesBackingCompleted(backer, msg.sender, lbp);
     }
@@ -353,5 +337,30 @@ contract CirclesBackingFactory {
     // personal circles lbp symbol
     function _symbol(address inflationaryCirlces) internal view returns (string memory) {
         return string(abi.encodePacked(LBP_PREFIX, IERC20Metadata(inflationaryCirlces).symbol()));
+    }
+
+    // Callback
+    function onERC1155Received(address operator, address from, uint256 id, uint256 value, bytes calldata data)
+        external
+        returns (bytes4)
+    {
+        if (msg.sender != address(HUB_V2)) revert OnlyHub();
+        if (value != CRC_AMOUNT) revert NotExactlyRequiredCRCAmount(CRC_AMOUNT, value);
+        address avatar = address(uint160(id));
+        if (operator != from || from != avatar) revert BackingInFavorDissalowed();
+        // handling personal CRC
+        // get stable address
+        address stableCRC = getPersonalCircles(avatar);
+
+        uint256 stableCirclesAmount = IERC20(stableCRC).balanceOf(address(this));
+        // wrap erc1155 into stable ERC20
+        HUB_V2.wrap(avatar, CRC_AMOUNT, uint8(1));
+        stableCirclesAmount = IERC20(stableCRC).balanceOf(address(this)) - stableCirclesAmount;
+
+        // decode backing asset
+        address backingAsset = abi.decode(data, (address));
+
+        startBacking(avatar, backingAsset, stableCRC, stableCirclesAmount);
+        return this.onERC1155Received.selector;
     }
 }
