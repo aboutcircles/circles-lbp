@@ -36,13 +36,14 @@ contract CirclesBackingFactory {
     event CirclesBackingDeployed(address indexed backer, address indexed circlesBackingInstance);
     /// @notice Emitted when a LBP is created.
     event LBPCreated(address indexed circlesBackingInstance, address indexed lbp);
-    event CirclesBackingCompleted(
+
+    event CirclesBackingInitiated(
         address indexed backer,
-        address indexed backingAsset,
         address indexed circlesBackingInstance,
-        address lbp,
-        address personalCRC
+        address backingAsset,
+        address personalCirclesAddress
     );
+    event CirclesBackingCompleted(address indexed backer, address indexed circlesBackingInstance, address lbp);
 
     // Cowswap order constants.
     /// @notice Helper contract for crafting Uid.
@@ -144,6 +145,7 @@ contract CirclesBackingFactory {
         CirclesBacking(instance).initiateBacking(
             msg.sender, backingAsset, personalCirclesAddress, orderUid, USDC, TRADE_AMOUNT
         );
+        emit CirclesBackingInitiated(msg.sender, instance, backingAsset, personalCirclesAddress);
     }
 
     // personal circles
@@ -229,7 +231,7 @@ contract CirclesBackingFactory {
     /// @param personalCRC .
     function createLBP(address personalCRC, address backingAsset, uint256 backingAssetAmount)
         external
-        returns (address lbp)
+        returns (address lbp, bytes32 poolId, IVault.JoinPoolRequest memory request)
     {
         address backer = backerOf[msg.sender];
         if (backer == address(0)) revert OnlyCirclesBacking();
@@ -257,23 +259,17 @@ contract CirclesBackingFactory {
 
         emit LBPCreated(backer, lbp);
 
-        bytes32 poolId = ILBP(lbp).getPoolId();
+        poolId = ILBP(lbp).getPoolId();
 
         uint256[] memory amountsIn = new uint256[](2);
         amountsIn[0] = tokenZero ? CRC_AMOUNT : backingAssetAmount;
         amountsIn[1] = tokenZero ? backingAssetAmount : CRC_AMOUNT;
 
         bytes memory userData = abi.encode(ILBP.JoinKind.INIT, amountsIn);
-        // CHECK: only owner can join pool, however it looks like anyone can do this call setting owner address as sender
-        // provide liquidity into lbp
-        IVault(VAULT).joinPool(
-            poolId,
-            msg.sender, // sender
-            msg.sender, // recipient
-            IVault.JoinPoolRequest(tokens, amountsIn, userData, false)
-        );
 
-        emit CirclesBackingCompleted(backer, backingAsset, msg.sender, lbp, personalCRC);
+        request = IVault.JoinPoolRequest(tokens, amountsIn, userData, false);
+
+        emit CirclesBackingCompleted(backer, msg.sender, lbp);
     }
 
     /// @notice General wrapper function over vault.exitPool, allows to extract

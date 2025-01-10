@@ -5,6 +5,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ICowswapSettlement} from "src/interfaces/ICowswapSettlement.sol";
 import {IFactory} from "src/interfaces/IFactory.sol"; // temporary solution
 import {ILBP} from "src/interfaces/ILBP.sol";
+import {IVault} from "src/interfaces/IVault.sol";
 
 contract CirclesBacking {
     /// Already initialized.
@@ -81,11 +82,22 @@ contract CirclesBacking {
         if (backingAssetBalance == 0) revert InsufficientBackingAssetBalance();
 
         // Create LBP
+        bytes32 poolId;
+        IVault.JoinPoolRequest memory request;
+
+        (lbp, poolId, request) = FACTORY.createLBP(personalCircles, backingAsset, backingAssetBalance);
+
         // approve vault
         IERC20(personalCircles).approve(VAULT_BALANCER, backingAssetBalance);
         IERC20(backingAsset).approve(VAULT_BALANCER, CRC_AMOUNT);
 
-        lbp = FACTORY.createLBP(personalCircles, backingAsset, backingAssetBalance);
+        // provide liquidity into lbp
+        IVault(VAULT_BALANCER).joinPool(
+            poolId,
+            address(this), // sender
+            address(this), // recipient
+            request
+        );
 
         // update weight gradually
         uint256 timestampInYear = block.timestamp + UPDATE_WEIGHT_DURATION;
