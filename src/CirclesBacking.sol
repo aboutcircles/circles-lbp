@@ -140,6 +140,8 @@ contract CirclesBacking {
                 revert TokensLockedUntilTimestamp(balancerPoolTokensUnlockTimestamp);
             }
         }
+        // zeroed timestamp
+        balancerPoolTokensUnlockTimestamp = 0;
 
         uint256 bptAmount = IERC20(lbp).balanceOf(address(this));
         IERC20(lbp).transfer(msg.sender, bptAmount);

@@ -101,7 +101,9 @@ contract CirclesBackingFactory {
     /// @notice Stores supported assets.
     mapping(address supportedAsset => bool) public supportedBackingAssets;
     /// @notice Links CirclesBacking instances to their creators.
-    mapping(address circleBacking => address backer) public backerOf;
+    mapping(address circlesBacking => address backer) public backerOf;
+    /// @notice Links backer to his CirclesBacking.
+    mapping(address backer => address circlesBacking) public circlesBackingOf;
     /// @notice Global release timestamp for balancer pool tokens.
     uint32 public releaseTimestamp = type(uint32).max;
 
@@ -285,6 +287,13 @@ contract CirclesBackingFactory {
         inflationaryCircles = LIFT_ERC20.ensureERC20(avatar, uint8(1));
     }
 
+    /// @notice Returns backer's LBP status.
+    function isLBPActive(address backer) external view returns (bool) {
+        address instance = circlesBackingOf[backer];
+        uint256 unlockTimestamp = CirclesBacking(instance).balancerPoolTokensUnlockTimestamp();
+        return unlockTimestamp > 0;
+    }
+
     // Internal functions
 
     // deploy instance
@@ -304,6 +313,8 @@ contract CirclesBackingFactory {
 
         // link instance to backer
         backerOf[deployedAddress] = backer;
+        // link backer to instance
+        circlesBackingOf[backer] = deployedAddress;
 
         emit CirclesBackingDeployed(backer, deployedAddress);
     }
