@@ -44,7 +44,7 @@ contract CirclesBacking {
     address public backer;
     /// @notice Address of one of supported assets, which was used to back circles.
     address public backingAsset;
-    /// @notice Address of ERC20 stable circles version (InlationaryCircles), which is used as underlying asset in lbp.
+    /// @notice Address of ERC20 stable circles version (InflationaryCircles), which is used as underlying asset in lbp.
     address public personalCircles;
     /// @notice Address of created Liquidity Bootstrapping Pool, which represents backing liquidity.
     address public lbp;
