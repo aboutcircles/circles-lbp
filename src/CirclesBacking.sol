@@ -132,7 +132,8 @@ contract CirclesBacking {
     // Balancer pool tokens
 
     /// @notice Method allows backer to claim balancer pool tokens after lock period or in case of global release.
-    function releaseBalancerPoolTokens() external {
+    /// @param receiver Address, which will receive balancer pool tokens.
+    function releaseBalancerPoolTokens(address receiver) external {
         if (msg.sender != backer) revert NotBacker();
 
         if (FACTORY.releaseTimestamp() > uint32(block.timestamp)) {
@@ -144,7 +145,7 @@ contract CirclesBacking {
         balancerPoolTokensUnlockTimestamp = 0;
 
         uint256 bptAmount = IERC20(lbp).balanceOf(address(this));
-        IERC20(lbp).transfer(msg.sender, bptAmount);
+        IERC20(lbp).transfer(receiver, bptAmount);
     }
 
     // Internal functions
