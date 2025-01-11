@@ -22,6 +22,8 @@ contract CirclesBackingFactory {
     error OnlyHub();
     /// Received CRC amount is `received`, required CRC amount is `required`.
     error NotExactlyRequiredCRCAmount(uint256 required, uint256 received);
+    /// Backing is allowed only for Hub human avatars.
+    error OnlyHumanAvatarsAreSupported();
     /// Backing in favor is dissalowed. Back only your personal CRC.
     error BackingInFavorDissalowed();
     /// Circles backing does not support `requestedAsset` asset.
@@ -279,10 +281,8 @@ contract CirclesBackingFactory {
     // personal circles
     /// @notice Returns address of avatar InflationaryCircles.
     /// @dev this call will revert, if avatar is not registered as human or group in Hub contract
-    function getPersonalCircles(address avatar) public view returns (address inflationaryCircles) {
-        inflationaryCircles = LIFT_ERC20.erc20Circles(uint8(1), avatar);
-        // TODO: find capacity to understand why i had this revert
-        //if (inflationaryCircles == address(0)) revert InflationaryCirclesNotExists(avatar);
+    function getPersonalCircles(address avatar) public returns (address inflationaryCircles) {
+        inflationaryCircles = LIFT_ERC20.ensureERC20(avatar, uint8(1));
     }
 
     // Internal functions
@@ -294,8 +294,6 @@ contract CirclesBackingFactory {
      * @return deployedAddress Address of the deployed contract.
      */
     function deployCirclesBacking(address backer) internal returns (address deployedAddress) {
-        // open question: do we want backer to be able to create only one backing? - this is how it is now.
-        // or we allow backer to create multiple backings, 1 per supported backing asset - need to add backing asset to salt.
         bytes32 salt_ = keccak256(abi.encodePacked(backer));
 
         deployedAddress = address(new CirclesBacking{salt: salt_}());
@@ -346,6 +344,7 @@ contract CirclesBackingFactory {
         if (msg.sender != address(HUB_V2)) revert OnlyHub();
         if (value != CRC_AMOUNT) revert NotExactlyRequiredCRCAmount(CRC_AMOUNT, value);
         address avatar = address(uint160(id));
+        if (!HUB_V2.isHuman(avatar)) revert OnlyHumanAvatarsAreSupported();
         if (operator != from || from != avatar) revert BackingInFavorDissalowed();
         // handling personal CRC
         // get stable address
