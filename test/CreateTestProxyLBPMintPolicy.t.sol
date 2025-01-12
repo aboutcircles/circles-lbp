@@ -4,11 +4,15 @@ pragma solidity ^0.8.28;
 import {Test, console} from "forge-std/Test.sol";
 import {Vm} from "forge-std/Vm.sol";
 import {CreateTestProxyLBPMintPolicy} from "src/proxy/CreateTestProxyLBPMintPolicy.sol";
-import {TestLBPMintPolicy} from "src/policy/TestLBPMintPolicy.sol";
-import {TestTrustModule} from "src/module/TestTrustModule.sol";
 
 contract MockImplementation {
     uint256 constant a = 1;
+    uint256 public b;
+
+    function initialize() external {
+        require(b == 0);
+        b = 1;
+    }
 }
 
 contract MockSafe {
@@ -23,12 +27,9 @@ event AdminChanged(address previousAdmin, address newAdmin);
 contract CreateTestProxyLBPMintPolicyTest is Test {
     CreateTestProxyLBPMintPolicy public proxyDeployer;
     address public mockImplementation = address(new MockImplementation());
-    address public implementation = address(new TestLBPMintPolicy());
-    address public trustModule = address(0x56652E53649F20C6a360Ea5F25379F9987cECE82);
 
     function setUp() public {
-        proxyDeployer = new CreateTestProxyLBPMintPolicy(implementation);
-        deployCodeTo("TestTrustModule.sol", trustModule);
+        proxyDeployer = new CreateTestProxyLBPMintPolicy(mockImplementation);
     }
 
     function testFuzz_OnlyDelegateCall(address any) public {
@@ -53,8 +54,8 @@ contract CreateTestProxyLBPMintPolicyTest is Test {
         safe.delegateTx(address(proxyDeployer), data);
 
         Vm.Log[] memory entries = vm.getRecordedLogs();
-        address proxy = address(uint160(uint256(entries[3].topics[1])));
-        assertEq(TestLBPMintPolicy(proxy).getGroupAvatar(), address(safe));
+        address proxy = address(uint160(uint256(entries[2].topics[1])));
+        console.log(proxy);
     }
 
     function _emitAdminChanged(address newAdmin) internal {

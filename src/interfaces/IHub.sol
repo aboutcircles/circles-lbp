@@ -8,4 +8,5 @@ interface IHub is IHubV2 {
     function trust(address _trustReceiver, uint96 _expiry) external;
     function registerGroup(address _mint, string calldata _name, string calldata _symbol, bytes32 _metadataDigest)
         external;
+    function wrap(address _avatar, uint256 _amount, uint8 _type) external returns (address);
 }
