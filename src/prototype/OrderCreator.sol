@@ -32,7 +32,7 @@ contract OrderCreator {
     address public constant GNO = 0x9C58BAcC331c9aa871AFD802DB6379a98e80CEdb;
     address public constant GET_UID_CONTRACT = 0xCA51403B524dF7dA6f9D6BFc64895AD833b5d711;
     address public constant COWSWAP_SETTLEMENT_CONTRACT = 0x9008D19f58AAbD9eD0D60971565AA8510560ab41;
-    address public constant RECEIVER = 0x7B2e78D4dFaABA045A167a70dA285E30E8FcA196;
+    address public constant RECEIVER = 0x6BF173798733623cc6c221eD52c010472247d861;
     address public constant VAULT_RELAY = 0xC92E8bdf79f0507f65a392b0ab4667716BFE0110;
 
     uint256 public constant WXDAI_DECIMALS = 1e18;

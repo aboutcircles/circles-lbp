@@ -65,14 +65,14 @@ contract CirclesBackingFactory {
     address public constant USDC = 0x2a22f9c3b484c3629090FeED35F17Ff8F88f76F0;
     /// @notice ERC20 decimals value for USDC.e.
     uint256 public constant USDC_DECIMALS = 1e6;
-    /// @notice Amount of USDC.e to use in a swap for backing asset or for LBP initial liquidity in case USDC.e is backing asset.
-    uint256 public constant TRADE_AMOUNT = 100 * USDC_DECIMALS;
+    /// @notice Amount of USDC.e to use in a swap for backing asset.
+    uint256 public immutable TRADE_AMOUNT;
     /// @notice Deadline for orders expiration - set as timestamp in 5 years after deployment.
     uint32 public immutable VALID_TO;
     /// @notice Order appdata divided into 2 strings to insert deployed instance address.
     string public constant preAppData =
         '{"version":"1.1.0","appCode":"Circles backing powered by AboutCircles","metadata":{"hooks":{"version":"0.1.0","post":[{"target":"';
-    string public constant postAppData = '","callData":"0x13e8f89f","gasLimit":"200000"}]}}}'; // Updated calldata for createLBP
+    string public constant postAppData = '","callData":"0x13e8f89f","gasLimit":"6000000"}]}}}'; // Updated calldata and gaslimit for createLBP
 
     /// LBP constants.
     /// @notice Balancer v2 Vault.
@@ -107,15 +107,31 @@ contract CirclesBackingFactory {
     /// @notice Global release timestamp for balancer pool tokens.
     uint32 public releaseTimestamp = type(uint32).max;
 
-    // Modifier
+    // Modifiers
     modifier onlyAdmin() {
         if (msg.sender != ADMIN) revert NotAdmin();
         _;
     }
 
+    /**
+     * @dev Reentrancy guard for nonReentrant functions.
+     * see https://soliditylang.org/blog/2024/01/26/transient-storage/
+     */
+    modifier nonReentrant() {
+        assembly {
+            if tload(0) { revert(0, 0) }
+            tstore(0, 1)
+        }
+        _;
+        assembly {
+            tstore(0, 0)
+        }
+    }
+
     // Constructor
-    constructor(address admin) {
+    constructor(address admin, uint256 usdcInteger) {
         ADMIN = admin;
+        TRADE_AMOUNT = usdcInteger * USDC_DECIMALS;
         VALID_TO = uint32(block.timestamp + 1825 days);
         supportedBackingAssets[address(0x8e5bBbb09Ed1ebdE8674Cda39A0c169401db4252)] = true; // WBTC
         supportedBackingAssets[address(0x6A023CCd1ff6F2045C3309768eAd9E68F978f6e1)] = true; // WETH
@@ -288,7 +304,7 @@ contract CirclesBackingFactory {
     }
 
     /// @notice Returns backer's LBP status.
-    function isLBPActive(address backer) external view returns (bool) {
+    function isActiveLBP(address backer) external view returns (bool) {
         address instance = circlesBackingOf[backer];
         uint256 unlockTimestamp = CirclesBacking(instance).balancerPoolTokensUnlockTimestamp();
         return unlockTimestamp > 0;
@@ -350,6 +366,7 @@ contract CirclesBackingFactory {
     // Callback
     function onERC1155Received(address operator, address from, uint256 id, uint256 value, bytes calldata data)
         external
+        nonReentrant
         returns (bytes4)
     {
         if (msg.sender != address(HUB_V2)) revert OnlyHub();
