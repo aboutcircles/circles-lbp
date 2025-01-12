@@ -24,7 +24,7 @@ contract CirclesBackingFactoryTest is Test {
     uint256 usdcStartAmount = 100e6;
     uint256 CRC_AMOUNT;
 
-    uint256 blockNumber = 37997665;
+    uint256 blockNumber = 37997675;
     uint256 gnosis;
 
     bytes public uid;
