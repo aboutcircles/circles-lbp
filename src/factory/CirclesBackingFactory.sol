@@ -104,8 +104,6 @@ contract CirclesBackingFactory {
     mapping(address supportedAsset => bool) public supportedBackingAssets;
     /// @notice Links CirclesBacking instances to their creators.
     mapping(address circlesBacking => address backer) public backerOf;
-    /// @notice Links backer to his CirclesBacking.
-    mapping(address backer => address circlesBacking) public circlesBackingOf;
     /// @notice Global release timestamp for balancer pool tokens.
     uint32 public releaseTimestamp = type(uint32).max;
 
@@ -289,7 +287,7 @@ contract CirclesBackingFactory {
      * @param backer Address which is backing circles.
      * @return predictedAddress Predicted address of the deployed contract.
      */
-    function computeAddress(address backer) external view returns (address predictedAddress) {
+    function computeAddress(address backer) public view returns (address predictedAddress) {
         bytes32 salt = keccak256(abi.encodePacked(backer));
         bytes memory bytecode = type(CirclesBacking).creationCode;
         predictedAddress = address(
@@ -318,7 +316,8 @@ contract CirclesBackingFactory {
 
     /// @notice Returns backer's LBP status.
     function isActiveLBP(address backer) external view returns (bool) {
-        address instance = circlesBackingOf[backer];
+        address instance = computeAddress(backer);
+        if (instance.code.length == 0) return false;
         uint256 unlockTimestamp = CirclesBacking(instance).balancerPoolTokensUnlockTimestamp();
         return unlockTimestamp > 0;
     }
@@ -342,8 +341,6 @@ contract CirclesBackingFactory {
 
         // link instance to backer
         backerOf[deployedAddress] = backer;
-        // link backer to instance
-        circlesBackingOf[backer] = deployedAddress;
 
         emit CirclesBackingDeployed(backer, deployedAddress);
     }
