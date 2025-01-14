@@ -13,7 +13,7 @@ import {CirclesBacking} from "src/CirclesBacking.sol";
 
 /**
  * @title Circles Backing Factory.
- * @notice Contract allows to create CircleBacking instances.
+ * @notice Contract allows to create CirclesBacking instances.
  *         Administrates supported backing assets and global balancer pool tokens release.
  */
 contract CirclesBackingFactory {
@@ -57,6 +57,8 @@ contract CirclesBackingFactory {
     event Released(address indexed backer, address indexed circlesBackingInstance, address indexed lbp);
 
     // Constants
+    /// @notice Hash of the CirclesBacking instance creation bytecode.
+    bytes32 public constant INSTANCE_BYTECODE_HASH = keccak256(type(CirclesBacking).creationCode);
     /// @notice Address allowed to set supported backing assets and global bpt release timestamp.
     address public immutable ADMIN;
 
@@ -289,9 +291,8 @@ contract CirclesBackingFactory {
      */
     function computeAddress(address backer) public view returns (address predictedAddress) {
         bytes32 salt = keccak256(abi.encodePacked(backer));
-        bytes memory bytecode = type(CirclesBacking).creationCode;
         predictedAddress = address(
-            uint160(uint256(keccak256(abi.encodePacked(bytes1(0xff), address(this), salt, keccak256(bytecode)))))
+            uint160(uint256(keccak256(abi.encodePacked(bytes1(0xff), address(this), salt, INSTANCE_BYTECODE_HASH))))
         );
     }
 
