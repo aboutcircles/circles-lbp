@@ -68,7 +68,7 @@ contract CirclesBackingFactory {
     /// @notice USDC.e contract address.
     address public constant USDC = 0x2a22f9c3b484c3629090FeED35F17Ff8F88f76F0;
     /// @notice ERC20 decimals value for USDC.e.
-    uint256 public constant USDC_DECIMALS = 1e6;
+    uint256 internal constant USDC_DECIMALS = 1e6;
     /// @notice Amount of USDC.e to use in a swap for backing asset.
     uint256 public immutable TRADE_AMOUNT;
     /// @notice Deadline for orders expiration - set as timestamp in 5 years after deployment.
@@ -110,6 +110,7 @@ contract CirclesBackingFactory {
     uint32 public releaseTimestamp = type(uint32).max;
 
     // Modifiers
+
     modifier onlyAdmin() {
         if (msg.sender != ADMIN) revert NotAdmin();
         _;
@@ -160,14 +161,18 @@ contract CirclesBackingFactory {
 
     // Backing logic
 
-    /// @dev Required upfront approval of this contract for USDC.e
-    /// @dev Is called inside onERC1155Received callback by Hub call Circles 1155 transferFrom.
+    /// @dev Required upfront approval of this contract for `TRADE_AMOUNT` USDC.e.
+    /// @dev Is called inside onERC1155Received callback by Hub call Circles ERC1155 transferFrom.
     function startBacking(address backer, address backingAsset, address stableCRCAddress, uint256 stableCRCAmount)
         internal
     {
         if (!supportedBackingAssets[backingAsset]) revert UnsupportedBackingAsset(backingAsset);
 
+        setTransientParameters(backer, backingAsset, stableCRCAddress, stableCRCAmount);
+
         address instance = deployCirclesBacking(backer);
+
+        setTransientParameters(address(0), address(0), address(0), uint256(0));
 
         // transfer USDC.e
         IERC20(USDC).transferFrom(backer, instance, TRADE_AMOUNT);
@@ -191,10 +196,8 @@ contract CirclesBackingFactory {
         );
         // Construct the order UID
         bytes memory orderUid = abi.encodePacked(orderDigest, instance, uint32(VALID_TO));
-        // Initiate backing
-        CirclesBacking(instance).initiateBacking(
-            backer, backingAsset, stableCRCAddress, orderUid, USDC, TRADE_AMOUNT, stableCRCAmount
-        );
+        // Initiate cowswap order
+        CirclesBacking(instance).initiateCowswapOrder(USDC, TRADE_AMOUNT, orderUid);
         emit CirclesBackingInitiated(backer, instance, backingAsset, stableCRCAddress);
     }
 
@@ -296,6 +299,25 @@ contract CirclesBackingFactory {
         );
     }
 
+    /// @notice Returns backing parameters.
+    function backingParameters()
+        external
+        view
+        returns (
+            address transientBacker,
+            address transientBackingAsset,
+            address transientStableCRC,
+            uint256 transientStableCRCAmount
+        )
+    {
+        assembly {
+            transientBacker := tload(1)
+            transientBackingAsset := tload(2)
+            transientStableCRC := tload(3)
+            transientStableCRCAmount := tload(4)
+        }
+    }
+
     // cowswap app data
     /// @notice Returns stringified json and its hash representing app data for Cowswap.
     function getAppData(address _circlesBackingInstance)
@@ -344,6 +366,22 @@ contract CirclesBackingFactory {
         backerOf[deployedAddress] = backer;
 
         emit CirclesBackingDeployed(backer, deployedAddress);
+    }
+
+    // transient storage
+    /// @dev Sets transient storage values.
+    function setTransientParameters(
+        address backer,
+        address backingAsset,
+        address personalStableCRC,
+        uint256 stableCRCAmount
+    ) internal {
+        assembly {
+            tstore(1, backer)
+            tstore(2, backingAsset)
+            tstore(3, personalStableCRC)
+            tstore(4, stableCRCAmount)
+        }
     }
 
     // cowswap app data helper

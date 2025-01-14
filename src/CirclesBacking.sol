@@ -9,8 +9,8 @@ import {IVault} from "src/interfaces/IVault.sol";
 
 contract CirclesBacking {
     // Errors
-    /// Already initialized.
-    error AlreadyInitialized();
+    /// Method is allowed to be called only by Factory.
+    error OnlyFactory();
     /// Function must be called only by Cowswap posthook.
     error OrderNotFilledYet();
     /// LBP is already created.
@@ -32,23 +32,26 @@ contract CirclesBacking {
         ICowswapSettlement(address(0x9008D19f58AAbD9eD0D60971565AA8510560ab41));
     /// @notice Gnosis Protocol v2 Vault Relayer Contract.
     address public constant VAULT_RELAY = 0xC92E8bdf79f0507f65a392b0ab4667716BFE0110;
-    /// @dev Circles Backing Factory.
-    IFactory internal immutable FACTORY;
     /// @dev LBP token weight 50%.
     uint256 internal constant WEIGHT_50 = 0.5 ether;
     /// @dev Update weight duration and lbp lock period is set to 1 year.
     uint256 internal constant UPDATE_WEIGHT_DURATION = 365 days;
 
-    // Storage
+    // Immutables
+    /// @dev Circles Backing Factory.
+    IFactory internal immutable FACTORY;
     /// @notice Address of circles avatar, which has backed his personal circles.
-    address public backer;
-    /// @notice Address of one of supported assets, which was used to back circles.
-    address public backingAsset;
-    /// @notice Address of ERC20 stable circles version (InflationaryCircles), which is used as underlying asset in lbp.
-    address public personalCircles;
+    address public immutable BACKER;
+    /// @notice Address of supported backing asset, which is used as underlying asset in lbp.
+    address public immutable BACKING_ASSET;
+    /// @notice Address of ERC20 stable Circles version (InflationaryCircles), which is used as underlying asset in lbp.
+    address public immutable STABLE_CRC;
+    /// @notice Amount of ERC20 stable Circles, which is used in lbp.
+    uint256 public immutable STABLE_CRC_AMOUNT;
+
+    // Storage
     /// @notice Address of created Liquidity Bootstrapping Pool, which represents backing liquidity.
     address public lbp;
-    uint256 stableCirclesAmount;
     /// @notice Timestamp, when locked balancer pool tokens are allowed to be claimed by backer.
     uint256 public balancerPoolTokensUnlockTimestamp;
     /// @notice Cowswap order uid.
@@ -56,35 +59,24 @@ contract CirclesBacking {
 
     constructor() {
         FACTORY = IFactory(msg.sender);
+        // init core values
+        (BACKER, BACKING_ASSET, STABLE_CRC, STABLE_CRC_AMOUNT) = FACTORY.backingParameters();
     }
 
     // Backing logic
 
-    /// @notice Initiates core values and backing process, approves Cowswap to spend USDC and presigns order.
-    function initiateBacking(
-        address _backer,
-        address _backingAsset,
-        address _personalCircles,
-        bytes memory orderUid,
-        address usdc,
-        uint256 tradeAmount,
-        uint256 stableCRCAmount
-    ) external {
-        if (backer != address(0)) revert AlreadyInitialized();
-        // init
-        backer = _backer;
-        backingAsset = _backingAsset;
-        personalCircles = _personalCircles;
-        stableCirclesAmount = stableCRCAmount;
+    /// @notice Initiates Cowswap order, approves Cowswap to spend USDC and presigns order.
+    function initiateCowswapOrder(address usdc, uint256 tradeAmount, bytes memory orderUid) external {
+        if (msg.sender != address(FACTORY)) revert OnlyFactory();
 
         // Approve USDC to Vault Relay contract
         IERC20(usdc).approve(VAULT_RELAY, tradeAmount);
 
-        // Store the order UID
-        storedOrderUid = orderUid;
-
         // Place the order using "setPreSignature"
         COWSWAP_SETTLEMENT.setPreSignature(orderUid, true);
+
+        // Store the order UID
+        storedOrderUid = orderUid;
 
         // Emit event with the order UID
         emit OrderCreated(orderUid);
@@ -99,7 +91,7 @@ contract CirclesBacking {
         if (lbp != address(0)) revert AlreadyCreated();
 
         // Backing asset balance of the contract
-        uint256 backingAssetBalance = IERC20(backingAsset).balanceOf(address(this));
+        uint256 backingAssetBalance = IERC20(BACKING_ASSET).balanceOf(address(this));
         if (backingAssetBalance == 0) revert InsufficientBackingAssetBalance();
 
         // Create LBP
@@ -107,11 +99,11 @@ contract CirclesBacking {
         IVault.JoinPoolRequest memory request;
         address vault;
         (lbp, poolId, request, vault) =
-            FACTORY.createLBP(personalCircles, stableCirclesAmount, backingAsset, backingAssetBalance);
+            FACTORY.createLBP(STABLE_CRC, STABLE_CRC_AMOUNT, BACKING_ASSET, backingAssetBalance);
 
         // approve vault
-        IERC20(personalCircles).approve(vault, stableCirclesAmount);
-        IERC20(backingAsset).approve(vault, backingAssetBalance);
+        IERC20(STABLE_CRC).approve(vault, STABLE_CRC_AMOUNT);
+        IERC20(BACKING_ASSET).approve(vault, backingAssetBalance);
 
         // provide liquidity into lbp
         IVault(vault).joinPool(
@@ -134,7 +126,7 @@ contract CirclesBacking {
     /// @notice Method allows backer to claim balancer pool tokens after lock period or in case of global release.
     /// @param receiver Address, which will receive balancer pool tokens.
     function releaseBalancerPoolTokens(address receiver) external {
-        if (msg.sender != backer) revert NotBacker();
+        if (msg.sender != BACKER) revert NotBacker();
 
         if (FACTORY.releaseTimestamp() > uint32(block.timestamp)) {
             if (balancerPoolTokensUnlockTimestamp > block.timestamp) {
