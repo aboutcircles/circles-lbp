@@ -12,4 +12,5 @@ interface IFactory {
         external
         returns (address lbp, bytes32 poolId, IVault.JoinPoolRequest memory request, address vault);
     function releaseTimestamp() external view returns (uint32);
+    function notifyRelease(address lbp) external;
 }

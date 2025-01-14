@@ -52,7 +52,9 @@ contract CirclesBackingFactory {
         address personalCirclesAddress
     );
     /// @notice Emitted when a Circles backing process is completed.
-    event CirclesBackingCompleted(address indexed backer, address indexed circlesBackingInstance, address lbp);
+    event CirclesBackingCompleted(address indexed backer, address indexed circlesBackingInstance, address indexed lbp);
+    /// @notice Emitted when a Circles backing is ended by user due to release of LP tokens.
+    event Released(address indexed backer, address indexed circlesBackingInstance, address indexed lbp);
 
     // Constants
     /// @notice Address allowed to set supported backing assets and global bpt release timestamp.
@@ -111,6 +113,11 @@ contract CirclesBackingFactory {
     modifier onlyAdmin() {
         if (msg.sender != ADMIN) revert NotAdmin();
         _;
+    }
+
+    function onlyCirclesBacking() private view returns (address backer) {
+        backer = backerOf[msg.sender];
+        if (backer == address(0)) revert OnlyCirclesBacking();
     }
 
     /**
@@ -194,6 +201,7 @@ contract CirclesBackingFactory {
     // LBP logic
 
     /// @notice Creates LBP with underlying assets: `backingAssetAmount` backingAsset(`backingAsset`) and `CRC_AMOUNT` InflationaryCircles(`personalCRC`).
+    /// @dev Only Circles Backing instances are able to call.
     /// @param personalCRC Address of InflationaryCircles (stable ERC20) used as underlying asset in lbp.
     /// @param backingAsset Address of backing asset used as underlying asset in lbp.
     /// @param backingAssetAmount Amount of backing asset used in lbp.
@@ -201,9 +209,7 @@ contract CirclesBackingFactory {
         external
         returns (address lbp, bytes32 poolId, IVault.JoinPoolRequest memory request, address vault)
     {
-        address backer = backerOf[msg.sender];
-        if (backer == address(0)) revert OnlyCirclesBacking();
-
+        address backer = onlyCirclesBacking();
         // prepare inputs
         IERC20[] memory tokens = new IERC20[](2);
         bool tokenZero = personalCRC < backingAsset;
@@ -239,6 +245,13 @@ contract CirclesBackingFactory {
         vault = VAULT;
 
         emit CirclesBackingCompleted(backer, msg.sender, lbp);
+    }
+
+    /// @notice Emits Released event on instance request.
+    /// @dev Only Circles Backing instances are able to call.
+    function notifyRelease(address lbp) external {
+        address backer = onlyCirclesBacking();
+        emit Released(backer, msg.sender, lbp);
     }
 
     /// @notice General wrapper function over vault.exitPool, allows to extract

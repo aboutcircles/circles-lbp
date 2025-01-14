@@ -146,6 +146,9 @@ contract CirclesBacking {
 
         uint256 bptAmount = IERC20(lbp).balanceOf(address(this));
         IERC20(lbp).transfer(receiver, bptAmount);
+
+        // emit event on factory lvl
+        FACTORY.notifyRelease(lbp);
     }
 
     // Internal functions
