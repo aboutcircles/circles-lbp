@@ -9,6 +9,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {CirclesBacking} from "src/CirclesBacking.sol";
 import {CirclesBackingFactory} from "src/factory/CirclesBackingFactory.sol";
 import {IHub} from "src/interfaces/IHub.sol";
+import {ILiftERC20} from "src/interfaces/ILiftERC20.sol";
 import {INoProtocolFeeLiquidityBootstrappingPoolFactory} from "src/interfaces/ILBPFactory.sol";
 import {ILBP} from "src/interfaces/ILBP.sol";
 import {IVault} from "src/interfaces/IVault.sol";
@@ -34,6 +35,7 @@ contract CirclesBackingFactoryTest is Test {
     // Addresses
     address internal constant COWSWAP_SETTLEMENT = 0x9008D19f58AAbD9eD0D60971565AA8510560ab41;
     IHub internal constant HUB_V2 = IHub(0xc12C1E50ABB450d6205Ea2C3Fa861b3B834d13e8);
+    ILiftERC20 LIFT_ERC20 = ILiftERC20(0x5F99a795dD2743C36D63511f0D4bc667e6d3cDB5);
     INoProtocolFeeLiquidityBootstrappingPoolFactory internal constant LBP_FACTORY =
         INoProtocolFeeLiquidityBootstrappingPoolFactory(0x85a80afee867aDf27B50BdB7b76DA70f1E853062);
 
@@ -199,6 +201,20 @@ contract CirclesBackingFactoryTest is Test {
         HUB_V2.safeTransferFrom(TEST_ACCOUNT, address(factory), uint256(uint160(TEST_ACCOUNT2)), CRC_AMOUNT, data);
     }
 
+    function test_RevertIf_OrderInitNotByFactory() public {
+        // Setup user with CRC and backing
+        address predictedInstance = _initUserWithBackedCRC(TEST_ACCOUNT, WETH);
+
+        // Simulate the CowSwap fill
+        _simulateCowSwapFill(predictedInstance, WETH, WETH_DEAL_AMOUNT);
+
+        // Create LBP
+        _createLBP(predictedInstance);
+
+        vm.expectRevert(CirclesBacking.OnlyFactory.selector);
+        CirclesBacking(predictedInstance).initiateCowswapOrder(USDC, 0, "");
+    }
+
     // -------------------------------------------------------------------------
     // CirclesBacking + LBP Creation & Release
     // -------------------------------------------------------------------------
@@ -210,10 +226,12 @@ contract CirclesBackingFactoryTest is Test {
         // Simulate the CowSwap fill
         _simulateCowSwapFill(predictedInstance, WETH, WETH_DEAL_AMOUNT);
 
+        assertFalse(factory.isActiveLBP(TEST_ACCOUNT));
         // Create LBP
         _createLBP(predictedInstance);
         address lbp = CirclesBacking(predictedInstance).lbp();
 
+        assertTrue(factory.isActiveLBP(TEST_ACCOUNT));
         // `1e6` is a balancer LP amount minted to zero address during the pool initialization
         assertEq(IERC20(lbp).balanceOf(predictedInstance), IERC20(lbp).totalSupply() - 1e6);
     }
@@ -232,7 +250,7 @@ contract CirclesBackingFactoryTest is Test {
         bytes32 poolId = ILBP(lbp).getPoolId();
         IERC20[] memory tokens = new IERC20[](2);
         tokens[0] = IERC20(WETH);
-        tokens[1] = IERC20(CirclesBacking(predictedInstance).personalCircles());
+        tokens[1] = IERC20(CirclesBacking(predictedInstance).STABLE_CRC());
 
         uint256[] memory amountsIn = new uint256[](2);
         amountsIn[0] = WETH_DEAL_AMOUNT;
@@ -291,10 +309,13 @@ contract CirclesBackingFactoryTest is Test {
 
         address lbp = CirclesBacking(predictedInstance).lbp();
         uint256 frozenLPTokensAmount = IERC20(lbp).balanceOf(predictedInstance);
+
+        assertTrue(factory.isActiveLBP(TEST_ACCOUNT));
         // Release from backer
         vm.prank(TEST_ACCOUNT);
         CirclesBacking(predictedInstance).releaseBalancerPoolTokens(TEST_ACCOUNT);
 
+        assertFalse(factory.isActiveLBP(TEST_ACCOUNT));
         assertEq(IERC20(lbp).balanceOf(predictedInstance), 0);
         assertEq(IERC20(lbp).balanceOf(TEST_ACCOUNT), frozenLPTokensAmount);
     }
@@ -443,5 +464,18 @@ contract CirclesBackingFactoryTest is Test {
         vm.prank(user);
         vm.expectRevert(CirclesBackingFactory.OnlyHumanAvatarsAreSupported.selector);
         HUB_V2.safeTransferFrom(user, address(factory), uint256(uint160(user)), CRC_AMOUNT, data);
+    }
+
+    // -------------------------------------------------------------------------
+    // Public Getters
+    // -------------------------------------------------------------------------
+
+    function testFuzz_GetAppData(address any) public view {
+        (string memory appDataString, bytes32 appDataHash) = CirclesBackingFactory(factory).getAppData(any);
+        assertEq(keccak256(bytes(appDataString)), appDataHash);
+    }
+
+    function test_PersonalCirclesAccount() public {
+        assertEq(LIFT_ERC20.ensureERC20(TEST_ACCOUNT, uint8(1)), factory.getPersonalCircles(TEST_ACCOUNT));
     }
 }
