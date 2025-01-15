@@ -24,23 +24,24 @@ contract CirclesBackingFactoryTest is Test {
 
     uint256 internal constant FORK_BLOCK_NUMBER = 37997675;
     uint256 internal constant USDC_START_AMOUNT = 100e6; // 100 USDC
-    uint256 internal constant WETH_DEAL_AMOUNT  = 0.03 ether;
-    uint256 internal constant YEAR              = 365 days;
-    
+    uint256 internal constant WETH_DEAL_AMOUNT = 0.03 ether;
+    uint256 internal constant YEAR = 365 days;
+    uint256 internal constant MAX_DELTA = 1e10;
+
     // Use keccak256(abi.encodePacked(uid, ORDER_FILLED_SLOT_INDEX)) for the settlement storage
     uint256 internal constant ORDER_FILLED_SLOT_INDEX = 2;
-    
+
     // Addresses
     address internal constant COWSWAP_SETTLEMENT = 0x9008D19f58AAbD9eD0D60971565AA8510560ab41;
-    IHub    internal constant HUB_V2            = IHub(0xc12C1E50ABB450d6205Ea2C3Fa861b3B834d13e8);
+    IHub internal constant HUB_V2 = IHub(0xc12C1E50ABB450d6205Ea2C3Fa861b3B834d13e8);
     INoProtocolFeeLiquidityBootstrappingPoolFactory internal constant LBP_FACTORY =
         INoProtocolFeeLiquidityBootstrappingPoolFactory(0x85a80afee867aDf27B50BdB7b76DA70f1E853062);
 
     address internal constant FACTORY_ADMIN = address(0x4583759874359754305480345);
-    address internal constant TEST_ACCOUNT  = 0x0865d14a4B688F24Bc8C282045A4A3cb9a26FbC2;
+    address internal constant TEST_ACCOUNT = 0x0865d14a4B688F24Bc8C282045A4A3cb9a26FbC2;
     address internal constant TEST_ACCOUNT2 = 0xc175a0c71f1eDA836ebbF3Ab0e32Fc8865FdEe91;
-    address internal constant WETH          = 0x6A023CCd1ff6F2045C3309768eAd9E68F978f6e1;
-    address internal constant USDT          = 0x4ECaBa5870353805a9F068101A40E0f32ed605C6;
+    address internal constant WETH = 0x6A023CCd1ff6F2045C3309768eAd9E68F978f6e1;
+    address internal constant USDT = 0x4ECaBa5870353805a9F068101A40E0f32ed605C6;
 
     // -------------------------------------------------------------------------
     // State Variables
@@ -48,7 +49,7 @@ contract CirclesBackingFactoryTest is Test {
 
     CirclesBackingFactory internal factory;
     address internal VAULT;
-    address internal USDC; 
+    address internal USDC;
     uint256 internal CRC_AMOUNT;
 
     // Gnosis fork ID
@@ -70,8 +71,8 @@ contract CirclesBackingFactoryTest is Test {
         factory = new CirclesBackingFactory(FACTORY_ADMIN, 100); // test-specific "fee" if any
 
         // Retrieve constants from factory
-        VAULT      = factory.VAULT();
-        USDC       = factory.USDC();
+        VAULT = factory.VAULT();
+        USDC = factory.USDC();
         CRC_AMOUNT = factory.CRC_AMOUNT();
     }
 
@@ -87,10 +88,7 @@ contract CirclesBackingFactoryTest is Test {
      *       3. Transfer exactly CRC_AMOUNT from Hub -> Factory
      * @return predictedInstance The address of the CirclesBacking instance that will be deployed
      */
-    function _initUserWithBackedCRC(
-        address user,
-        address backingAsset
-    ) internal returns (address predictedInstance) {
+    function _initUserWithBackedCRC(address user, address backingAsset) internal returns (address predictedInstance) {
         predictedInstance = factory.computeAddress(user);
 
         // Give user USDC
@@ -103,13 +101,7 @@ contract CirclesBackingFactoryTest is Test {
         // Transfer exactly CRC_AMOUNT from user to factory (HUB -> factory)
         bytes memory data = abi.encode(backingAsset);
         vm.prank(user);
-        HUB_V2.safeTransferFrom(
-            user,
-            address(factory),
-            uint256(uint160(user)),
-            CRC_AMOUNT,
-            data
-        );
+        HUB_V2.safeTransferFrom(user, address(factory), uint256(uint160(user)), CRC_AMOUNT, data);
     }
 
     /**
@@ -117,11 +109,7 @@ contract CirclesBackingFactoryTest is Test {
      *      1. Dealing `fillAmount` of `backingAsset` to the predicted instance
      *      2. Setting the `fillAmount` in the settlement contract storage
      */
-    function _simulateCowSwapFill(
-        address predictedInstance,
-        address backingAsset,
-        uint256 fillAmount
-    ) internal {
+    function _simulateCowSwapFill(address predictedInstance, address backingAsset, uint256 fillAmount) internal {
         // Deal backingAsset to the instance
         deal(backingAsset, predictedInstance, fillAmount);
 
@@ -149,16 +137,20 @@ contract CirclesBackingFactoryTest is Test {
     function test_SetReleaseTimestamp() public {
         vm.prank(factory.ADMIN());
         factory.setReleaseTimestamp(0);
+
+        assertEq(factory.releaseTimestamp(), 0);
     }
 
     function test_SetSupportedBackingAssetStatus() public {
         vm.prank(factory.ADMIN());
-        factory.setSupportedBackingAssetStatus(0x8e5bBbb09Ed1ebdE8674Cda39A0c169401db4252, true);
+        factory.setSupportedBackingAssetStatus(USDT, true);
+
+        assertEq(factory.supportedBackingAssets(USDT), true);
     }
 
     function test_RevertIf_UserSetSupportedBackingAssetStatus() public {
         vm.expectRevert(CirclesBackingFactory.NotAdmin.selector);
-        factory.setSupportedBackingAssetStatus(0x8e5bBbb09Ed1ebdE8674Cda39A0c169401db4252, false);
+        factory.setSupportedBackingAssetStatus(USDT, false);
     }
 
     function test_RevertIf_UserSetsReleaseTime() public {
@@ -172,13 +164,7 @@ contract CirclesBackingFactoryTest is Test {
 
     function test_RevertIf_FactoryReciveCalledNotByHubV2() public {
         vm.expectRevert(CirclesBackingFactory.OnlyHub.selector);
-        factory.onERC1155Received(
-            TEST_ACCOUNT,
-            address(factory),
-            uint256(uint160(TEST_ACCOUNT)),
-            CRC_AMOUNT,
-            ""
-        );
+        factory.onERC1155Received(TEST_ACCOUNT, address(factory), uint256(uint160(TEST_ACCOUNT)), CRC_AMOUNT, "");
     }
 
     function test_RevertIf_UserSendsNotEnoughCRC() public {
@@ -192,18 +178,10 @@ contract CirclesBackingFactoryTest is Test {
         vm.prank(TEST_ACCOUNT);
         vm.expectRevert(
             abi.encodeWithSelector(
-                CirclesBackingFactory.NotExactlyRequiredCRCAmount.selector,
-                CRC_AMOUNT,
-                CRC_AMOUNT - 1
+                CirclesBackingFactory.NotExactlyRequiredCRCAmount.selector, CRC_AMOUNT, CRC_AMOUNT - 1
             )
         );
-        HUB_V2.safeTransferFrom(
-            TEST_ACCOUNT,
-            address(factory),
-            uint256(uint160(TEST_ACCOUNT)),
-            CRC_AMOUNT - 1,
-            data
-        );
+        HUB_V2.safeTransferFrom(TEST_ACCOUNT, address(factory), uint256(uint160(TEST_ACCOUNT)), CRC_AMOUNT - 1, data);
     }
 
     function test_RevertIf_UserBacksSomeonesTokens() public {
@@ -218,13 +196,7 @@ contract CirclesBackingFactoryTest is Test {
         bytes memory data = abi.encode(WETH);
         vm.prank(TEST_ACCOUNT);
         vm.expectRevert(CirclesBackingFactory.BackingInFavorDissalowed.selector);
-        HUB_V2.safeTransferFrom(
-            TEST_ACCOUNT,
-            address(factory),
-            uint256(uint160(TEST_ACCOUNT2)),
-            CRC_AMOUNT,
-            data
-        );
+        HUB_V2.safeTransferFrom(TEST_ACCOUNT, address(factory), uint256(uint160(TEST_ACCOUNT2)), CRC_AMOUNT, data);
     }
 
     // -------------------------------------------------------------------------
@@ -240,6 +212,42 @@ contract CirclesBackingFactoryTest is Test {
 
         // Create LBP
         _createLBP(predictedInstance);
+        address lbp = CirclesBacking(predictedInstance).lbp();
+
+        // `1e6` is a balancer LP amount minted to zero address during the pool initialization
+        assertEq(IERC20(lbp).balanceOf(predictedInstance), IERC20(lbp).totalSupply() - 1e6);
+    }
+
+    function test_RevertIf_LiquidityAddedNotByOwner() public {
+        // Setup user with CRC and backing
+        address predictedInstance = _initUserWithBackedCRC(TEST_ACCOUNT, WETH);
+
+        // Simulate the CowSwap fill
+        _simulateCowSwapFill(predictedInstance, WETH, WETH_DEAL_AMOUNT);
+
+        // Create LBP
+        _createLBP(predictedInstance);
+
+        address lbp = CirclesBacking(predictedInstance).lbp();
+        bytes32 poolId = ILBP(lbp).getPoolId();
+        IERC20[] memory tokens = new IERC20[](2);
+        tokens[0] = IERC20(WETH);
+        tokens[1] = IERC20(CirclesBacking(predictedInstance).personalCircles());
+
+        uint256[] memory amountsIn = new uint256[](2);
+        amountsIn[0] = WETH_DEAL_AMOUNT;
+        amountsIn[1] = 0;
+        bytes memory userData = abi.encode(ILBP.JoinKind.EXACT_TOKENS_IN_FOR_BPT_OUT, amountsIn);
+        IVault.JoinPoolRequest memory request = IVault.JoinPoolRequest(tokens, amountsIn, userData, false);
+
+        vm.prank(TEST_ACCOUNT);
+        vm.expectRevert("BAL#328"); // BAL#328 stands for `CALLER_IS_NOT_LBP_OWNER`
+        IVault(VAULT).joinPool(
+            poolId,
+            TEST_ACCOUNT, // sender
+            TEST_ACCOUNT, // recipient
+            request
+        );
     }
 
     function test_RevertIf_LBPIsAlreadyCreated() public {
@@ -281,9 +289,14 @@ contract CirclesBackingFactoryTest is Test {
         // Warp enough time so that release is possible
         vm.warp(block.timestamp + YEAR);
 
+        address lbp = CirclesBacking(predictedInstance).lbp();
+        uint256 frozenLPTokensAmount = IERC20(lbp).balanceOf(predictedInstance);
         // Release from backer
         vm.prank(TEST_ACCOUNT);
         CirclesBacking(predictedInstance).releaseBalancerPoolTokens(TEST_ACCOUNT);
+
+        assertEq(IERC20(lbp).balanceOf(predictedInstance), 0);
+        assertEq(IERC20(lbp).balanceOf(TEST_ACCOUNT), frozenLPTokensAmount);
     }
 
     function test_RevertIf_ReleaseBalancerPoolDeadlineNotMet() public {
@@ -298,10 +311,7 @@ contract CirclesBackingFactoryTest is Test {
         // Attempt to release too soon
         vm.prank(TEST_ACCOUNT);
         vm.expectRevert(
-            abi.encodeWithSelector(
-                CirclesBacking.TokensLockedUntilTimestamp.selector,
-                block.timestamp + YEAR
-            )
+            abi.encodeWithSelector(CirclesBacking.TokensLockedUntilTimestamp.selector, block.timestamp + YEAR)
         );
         CirclesBacking(predictedInstance).releaseBalancerPoolTokens(TEST_ACCOUNT);
     }
@@ -326,19 +336,8 @@ contract CirclesBackingFactoryTest is Test {
         // Attempt to back with USDT, which is not supported in the factory
         bytes memory data = abi.encode(USDT);
         vm.prank(TEST_ACCOUNT);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                CirclesBackingFactory.UnsupportedBackingAsset.selector,
-                USDT
-            )
-        );
-        HUB_V2.safeTransferFrom(
-            TEST_ACCOUNT,
-            address(factory),
-            uint256(uint160(TEST_ACCOUNT)),
-            CRC_AMOUNT,
-            data
-        );
+        vm.expectRevert(abi.encodeWithSelector(CirclesBackingFactory.UnsupportedBackingAsset.selector, USDT));
+        HUB_V2.safeTransferFrom(TEST_ACCOUNT, address(factory), uint256(uint160(TEST_ACCOUNT)), CRC_AMOUNT, data);
     }
 
     function test_RevertIf_BackingNotCirclesAsset() public {
@@ -366,15 +365,7 @@ contract CirclesBackingFactoryTest is Test {
         weights[1] = 0.3 ether;
         weights[2] = 0.4 ether;
         // Create a 3-token LBP externally (just for testing exitLBP)
-        address lbp = LBP_FACTORY.create(
-            "testPool",
-            "TP",
-            tokens,
-            weights,
-            0.01 ether,
-            msg.sender,
-            true
-        );
+        address lbp = LBP_FACTORY.create("testPool", "TP", tokens, weights, 0.01 ether, msg.sender, true);
 
         // Put some LP tokens in testAccount
         deal(lbp, TEST_ACCOUNT, 100 ether);
@@ -395,16 +386,25 @@ contract CirclesBackingFactoryTest is Test {
 
         address lbp = CirclesBacking(predictedInstance).lbp();
 
-        // Give testAccount some LBP tokens
-        deal(lbp, TEST_ACCOUNT, 0.01 ether);
+        vm.warp(block.timestamp + YEAR);
 
+        // Release from backer
+        vm.prank(TEST_ACCOUNT);
+        CirclesBacking(predictedInstance).releaseBalancerPoolTokens(TEST_ACCOUNT);
+
+        uint256 LPTokensAmount = IERC20(lbp).balanceOf(TEST_ACCOUNT);
         // Approve
         vm.prank(TEST_ACCOUNT);
-        IERC20(lbp).approve(address(factory), 0.01 ether);
+        IERC20(lbp).approve(address(factory), LPTokensAmount);
 
+        bytes32 poolId = ILBP(lbp).getPoolId();
+        (IERC20[] memory tokens, uint256[] memory balances,) = IVault(VAULT).getPoolTokens(poolId);
         // Exit
         vm.prank(TEST_ACCOUNT);
-        factory.exitLBP(lbp, 0.01 ether);
+        factory.exitLBP(lbp, LPTokensAmount);
+
+        assertApproxEqAbs(tokens[0].balanceOf(TEST_ACCOUNT), balances[0], MAX_DELTA);
+        assertApproxEqAbs(tokens[1].balanceOf(TEST_ACCOUNT), balances[1], MAX_DELTA);
     }
 
     // -------------------------------------------------------------------------
@@ -419,9 +419,6 @@ contract CirclesBackingFactoryTest is Test {
     }
 
     function test_RevertIf_DeployingLBPSecondTime() public {
-        address predictedInstance = _initUserWithBackedCRC(TEST_ACCOUNT, WETH);
-        console.log(HUB_V2.balanceOf(TEST_ACCOUNT, uint256(uint160(TEST_ACCOUNT))));
-
         // Attempt to re-send CRC
         vm.warp(block.timestamp + 1 days);
         bytes memory data = abi.encode(WETH);
@@ -429,23 +426,13 @@ contract CirclesBackingFactoryTest is Test {
         // Should fail with a generic revert (LBP is already deployed)
         vm.prank(TEST_ACCOUNT);
         vm.expectRevert();
-        HUB_V2.safeTransferFrom(
-            TEST_ACCOUNT,
-            address(factory),
-            uint256(uint160(TEST_ACCOUNT)),
-            CRC_AMOUNT,
-            data
-        );
+        HUB_V2.safeTransferFrom(TEST_ACCOUNT, address(factory), uint256(uint160(TEST_ACCOUNT)), CRC_AMOUNT, data);
     }
 
     function test_RevertIf_UserIsNotHuman() public {
         // Mock the HUB so that isHuman(avatar) returns false (e.g. avatar is group)
         address user = TEST_ACCOUNT;
-        vm.mockCall(
-            address(HUB_V2),
-            abi.encodeWithSelector(HUB_V2.isHuman.selector, user),
-            abi.encode(false)
-        );
+        vm.mockCall(address(HUB_V2), abi.encodeWithSelector(HUB_V2.isHuman.selector, user), abi.encode(false));
 
         // Attempt to back with CRC => should revert with OnlyHumanAvatarsAreSupported
         deal(USDC, user, USDC_START_AMOUNT);
@@ -455,12 +442,6 @@ contract CirclesBackingFactoryTest is Test {
         bytes memory data = abi.encode(WETH);
         vm.prank(user);
         vm.expectRevert(CirclesBackingFactory.OnlyHumanAvatarsAreSupported.selector);
-        HUB_V2.safeTransferFrom(
-            user,
-            address(factory),
-            uint256(uint160(user)),
-            CRC_AMOUNT,
-            data
-        );
+        HUB_V2.safeTransferFrom(user, address(factory), uint256(uint160(user)), CRC_AMOUNT, data);
     }
 }
