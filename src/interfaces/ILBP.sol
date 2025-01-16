@@ -14,6 +14,5 @@ interface ILBP {
     }
 
     function getPoolId() external view returns (bytes32);
-    function setSwapEnabled(bool swapEnabled) external;
     function updateWeightsGradually(uint256 startTime, uint256 endTime, uint256[] memory endWeights) external;
 }
