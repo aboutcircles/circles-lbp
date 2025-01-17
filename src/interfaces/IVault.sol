@@ -93,22 +93,6 @@ interface IVault {
     }
 
     /**
-     * @dev Emitted when a user joins or exits a Pool by calling `joinPool` or `exitPool`, respectively.
-     */
-    event PoolBalanceChanged(
-        bytes32 indexed poolId,
-        address indexed liquidityProvider,
-        IERC20[] tokens,
-        int256[] deltas,
-        uint256[] protocolFeeAmounts
-    );
-
-    enum PoolBalanceChangeKind {
-        JOIN,
-        EXIT
-    }
-
-    /**
      * @dev Returns a Pool's registered tokens, the total balance for each, and the latest block when *any* of
      * the tokens' `balances` changed.
      *

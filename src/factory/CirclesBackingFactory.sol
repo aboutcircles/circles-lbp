@@ -30,9 +30,7 @@ contract CirclesBackingFactory {
     error UnsupportedBackingAsset(address requestedAsset);
     /// Deployment of CirclesBacking instance initiated by user `backer` has failed.
     error CirclesBackingDeploymentFailed(address backer);
-    /// Missing approval of this address to spend personal CRC.
-    error PersonalCirclesApprovalIsMissing();
-    /// Method can be called only by instance of CirclesBacking deployed by this factory.
+    /// Method can be called only by CirclesBacking instance deployed by this factory.
     error OnlyCirclesBacking();
     /// Unauthorized access.
     error NotAdmin();
@@ -40,9 +38,9 @@ contract CirclesBackingFactory {
     error OnlyTwoTokenLBPSupported();
 
     // Events
-    /// @notice Emitted when a CirclesBacking is created.
+    /// @notice Emitted when a CirclesBacking instance is created.
     event CirclesBackingDeployed(address indexed backer, address indexed circlesBackingInstance);
-    /// @notice Emitted when a LBP is created.
+    /// @notice Emitted when a LBP instance is created.
     event LBPDeployed(address indexed circlesBackingInstance, address indexed lbp);
     /// @notice Emitted when a Circles backing process is initiated.
     event CirclesBackingInitiated(
