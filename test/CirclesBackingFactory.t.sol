@@ -13,7 +13,6 @@ import {ILiftERC20} from "src/interfaces/ILiftERC20.sol";
 import {INoProtocolFeeLiquidityBootstrappingPoolFactory} from "src/interfaces/ILBPFactory.sol";
 import {ILBP} from "src/interfaces/ILBP.sol";
 import {IVault} from "src/interfaces/IVault.sol";
-import {ITokenV1} from "src/interfaces/IToken.sol";
 
 /**
  * @title CirclesBackingFactoryTest
