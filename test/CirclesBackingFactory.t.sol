@@ -7,7 +7,7 @@ import {Vm} from "forge-std/Vm.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import {CirclesBacking} from "src/CirclesBacking.sol";
-import {CirclesBackingFactory} from "src/factory/CirclesBackingFactory.sol";
+import {CirclesBackingFactory} from "src/CirclesBackingFactory.sol";
 import {IHub} from "src/interfaces/IHub.sol";
 import {ILiftERC20} from "src/interfaces/ILiftERC20.sol";
 import {INoProtocolFeeLiquidityBootstrappingPoolFactory} from "src/interfaces/ILBPFactory.sol";
