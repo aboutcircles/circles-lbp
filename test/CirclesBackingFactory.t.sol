@@ -30,8 +30,11 @@ contract CirclesBackingFactoryTest is Test {
     uint256 internal constant YEAR = 365 days;
     uint256 internal constant MAX_DELTA = 1e10;
 
-    // Use keccak256(abi.encodePacked(uid, ORDER_FILLED_SLOT_INDEX)) for the settlement storage
-    uint256 internal constant ORDER_FILLED_SLOT_INDEX = 2;
+    // Use keccak256(abi.encodePacked(uid, ORDER_FILLED_SLOT)) for the settlement storage
+    uint256 internal constant ORDER_FILLED_SLOT = 2;
+    // Use for Hub storage
+    uint256 internal constant DISCOUNTED_BALANCES_SLOT = 17;
+    uint256 internal constant MINT_TIMES_SLOT = 21;
 
     // Addresses
     address internal constant COWSWAP_SETTLEMENT = 0x9008D19f58AAbD9eD0D60971565AA8510560ab41;
@@ -54,10 +57,12 @@ contract CirclesBackingFactoryTest is Test {
     // -------------------------------------------------------------------------
 
     CirclesBackingFactory internal factory;
-    address internal TEST_ACCOUNT;
+    address internal TEST_ACCOUNT_1 = makeAddr("alice");
+    address internal TEST_ACCOUNT_2 = makeAddr("bob");
     address internal VAULT;
     address internal USDC;
     uint256 internal CRC_AMOUNT;
+    uint64 internal TODAY;
 
     // Gnosis fork ID
     uint256 internal gnosisFork;
@@ -82,8 +87,12 @@ contract CirclesBackingFactoryTest is Test {
         USDC = factory.USDC();
         CRC_AMOUNT = factory.CRC_AMOUNT();
 
-        TEST_ACCOUNT = makeAddr("alice");
-        _setAvatarWithPersonalCRC(TEST_ACCOUNT);
+        TODAY = HUB_V2.day(block.timestamp);
+
+        _setMintTime(TEST_ACCOUNT_1);
+        _setMintTime(TEST_ACCOUNT_2);
+        _setCRCBalance(uint256(uint160(TEST_ACCOUNT_1)), TEST_ACCOUNT_1, TODAY, uint192(CRC_AMOUNT * 2));
+        _setCRCBalance(uint256(uint160(TEST_ACCOUNT_2)), TEST_ACCOUNT_2, TODAY, uint192(CRC_AMOUNT * 2));
     }
 
     // -------------------------------------------------------------------------
@@ -102,32 +111,19 @@ contract CirclesBackingFactoryTest is Test {
         _;
     }
 
-    /**
-     * @dev Mocks CircleV1 calls to associate `_user` with a personal CRC contract
-     *      and registers the new human in HubV2 before minting personal CRC tokens.
-     *
-     * @param _user The address to set up as a Circles Human.
-     */
-    function _setAvatarWithPersonalCRC(address _user) internal {
-        address CIRCLE_USER_V1 = makeAddr("CircleUserV12");
-        // 0x29b9a7fBb8995b2423a71cC17cf9810798F6C543 -> CirclesV1
-        // 0x28d249fe -> function userToToken(address) public returns(address)
-        vm.mockCall(
-            address(0x29b9a7fBb8995b2423a71cC17cf9810798F6C543),
-            abi.encodeWithSelector(0x28d249fe, _user),
-            abi.encode(CIRCLE_USER_V1)
-        );
+    /// @dev Sets Hub mint times for account.
+    function _setMintTime(address account) internal {
+        bytes32 accountSlot = keccak256(abi.encodePacked(uint256(uint160(account)), MINT_TIMES_SLOT));
+        uint256 mintTime = block.timestamp << 160;
+        vm.store(address(HUB_V2), accountSlot, bytes32(mintTime));
+    }
 
-        // mock responses from V1 contracts in order to register a new Human user
-        vm.mockCall(CIRCLE_USER_V1, abi.encodeWithSelector(ITokenV1.lastTouched.selector), abi.encode(0));
-        vm.mockCall(CIRCLE_USER_V1, abi.encodeWithSelector(ITokenV1.stopped.selector), abi.encode(true));
-        vm.prank(_user);
-        HUB_V2.registerHuman(address(0), "");
-
-        // wait some time and mint `335508120695232170984` personal CRC afterwards
-        vm.warp(block.timestamp + YEAR);
-        vm.prank(_user);
-        HUB_V2.personalMint();
+    /// @dev Sets Hub ERC1155 balance of id for account.
+    function _setCRCBalance(uint256 id, address account, uint64 lastUpdatedDay, uint192 balance) internal {
+        bytes32 idSlot = keccak256(abi.encodePacked(id, DISCOUNTED_BALANCES_SLOT));
+        bytes32 accountSlot = keccak256(abi.encodePacked(uint256(uint160(account)), idSlot));
+        uint256 discountedBalance = (uint256(lastUpdatedDay) << 192) + balance;
+        vm.store(address(HUB_V2), accountSlot, bytes32(discountedBalance));
     }
 
     /**
@@ -166,8 +162,8 @@ contract CirclesBackingFactoryTest is Test {
         // Retrieve the stored orderUid from the CirclesBacking instance
         bytes memory storedUid = CirclesBacking(predictedInstance).storedOrderUid();
 
-        // Craft the storage slot: keccak256(abi.encodePacked(uid, ORDER_FILLED_SLOT_INDEX))
-        bytes32 slot = keccak256(abi.encodePacked(storedUid, uint256(ORDER_FILLED_SLOT_INDEX)));
+        // Craft the storage slot: keccak256(abi.encodePacked(uid, ORDER_FILLED_SLOT))
+        bytes32 slot = keccak256(abi.encodePacked(storedUid, uint256(ORDER_FILLED_SLOT)));
 
         // Store fillAmount in the settlement contract's slot
         vm.store(COWSWAP_SETTLEMENT, slot, bytes32(uint256(fillAmount)));
@@ -221,61 +217,54 @@ contract CirclesBackingFactoryTest is Test {
 
     function test_RevertIf_FactoryReceiveCalledNotByHubV2() public {
         vm.expectRevert(CirclesBackingFactory.OnlyHub.selector);
-        factory.onERC1155Received(TEST_ACCOUNT, address(factory), uint256(uint160(TEST_ACCOUNT)), CRC_AMOUNT, "");
+        factory.onERC1155Received(TEST_ACCOUNT_1, address(factory), uint256(uint160(TEST_ACCOUNT_1)), CRC_AMOUNT, "");
     }
 
     function test_RevertIf_UserSendsIncorrectCRCAmount() public {
         // Attempt to send CRC_AMOUNT - 1 and CRC_AMOUNT + 1
-        vm.prank(TEST_ACCOUNT);
+        vm.prank(TEST_ACCOUNT_1);
         vm.expectRevert(
             abi.encodeWithSelector(
                 CirclesBackingFactory.NotExactlyRequiredCRCAmount.selector, CRC_AMOUNT, CRC_AMOUNT - 1
             )
         );
-        HUB_V2.safeTransferFrom(TEST_ACCOUNT, address(factory), uint256(uint160(TEST_ACCOUNT)), CRC_AMOUNT - 1, "");
+        HUB_V2.safeTransferFrom(TEST_ACCOUNT_1, address(factory), uint256(uint160(TEST_ACCOUNT_1)), CRC_AMOUNT - 1, "");
 
-        vm.prank(TEST_ACCOUNT);
+        vm.prank(TEST_ACCOUNT_1);
         vm.expectRevert(
             abi.encodeWithSelector(
                 CirclesBackingFactory.NotExactlyRequiredCRCAmount.selector, CRC_AMOUNT, CRC_AMOUNT + 1
             )
         );
-        HUB_V2.safeTransferFrom(TEST_ACCOUNT, address(factory), uint256(uint160(TEST_ACCOUNT)), CRC_AMOUNT + 1, "");
+        HUB_V2.safeTransferFrom(TEST_ACCOUNT_1, address(factory), uint256(uint160(TEST_ACCOUNT_1)), CRC_AMOUNT + 1, "");
     }
 
     function test_RevertIf_UserBacksSomeonesTokens() public {
         // Setup a new account
-        address someAccount = makeAddr("bob");
-        _setAvatarWithPersonalCRC(someAccount);
-
-        vm.prank(someAccount);
+        vm.prank(TEST_ACCOUNT_2);
         // Transfer some personal CRC from someAccount -> testAccount
-        HUB_V2.safeTransferFrom(someAccount, TEST_ACCOUNT, uint256(uint160(someAccount)), CRC_AMOUNT, "");
+        HUB_V2.safeTransferFrom(TEST_ACCOUNT_2, TEST_ACCOUNT_1, uint256(uint160(TEST_ACCOUNT_2)), CRC_AMOUNT, "");
 
         // Attempt to back someAccount's CRC from testAccount -> factory
-        vm.prank(TEST_ACCOUNT);
+        vm.prank(TEST_ACCOUNT_1);
         vm.expectRevert(CirclesBackingFactory.BackingInFavorDissalowed.selector);
-        HUB_V2.safeTransferFrom(TEST_ACCOUNT, address(factory), uint256(uint160(someAccount)), CRC_AMOUNT, "");
+        HUB_V2.safeTransferFrom(TEST_ACCOUNT_1, address(factory), uint256(uint160(TEST_ACCOUNT_2)), CRC_AMOUNT, "");
     }
 
     function test_RevertIf_OperatorIsNotBackingUser() public {
-        // Setup a new account
-        address someAccount = makeAddr("bob");
-        _setAvatarWithPersonalCRC(someAccount);
+        vm.prank(TEST_ACCOUNT_1);
+        // Grant approval for all tokens to test acccount 2
+        HUB_V2.setApprovalForAll(TEST_ACCOUNT_2, true);
 
-        vm.prank(TEST_ACCOUNT);
-        // Grant approval for all tokens to someAccount
-        HUB_V2.setApprovalForAll(someAccount, true);
-
-        vm.prank(someAccount);
+        vm.prank(TEST_ACCOUNT_2);
         vm.expectRevert(CirclesBackingFactory.BackingInFavorDissalowed.selector);
         // Transfer should fail because testAccount is not the operator
-        HUB_V2.safeTransferFrom(TEST_ACCOUNT, address(factory), uint256(uint160(TEST_ACCOUNT)), CRC_AMOUNT, "");
+        HUB_V2.safeTransferFrom(TEST_ACCOUNT_1, address(factory), uint256(uint160(TEST_ACCOUNT_1)), CRC_AMOUNT, "");
     }
 
     function test_RevertIf_OrderInitNotByFactory(uint8 index) public setBackingAsset(index) {
         // Setup user with CRC and backing
-        address predictedInstance = _initUserWithBackedCRC(TEST_ACCOUNT, BACKING_ASSET);
+        address predictedInstance = _initUserWithBackedCRC(TEST_ACCOUNT_1, BACKING_ASSET);
 
         vm.expectRevert(CirclesBacking.OnlyFactory.selector);
         CirclesBacking(predictedInstance).initiateCowswapOrder(USDC, 0, "");
@@ -287,29 +276,29 @@ contract CirclesBackingFactoryTest is Test {
 
     function test_CreateLBP(uint8 index) public setBackingAsset(index) {
         // Setup user with CRC and backing
-        uint256 transferredUserCRCAmount = HUB_V2.balanceOf(TEST_ACCOUNT, uint256(uint160(TEST_ACCOUNT)));
-        address predictedInstance = _initUserWithBackedCRC(TEST_ACCOUNT, BACKING_ASSET);
-        transferredUserCRCAmount -= HUB_V2.balanceOf(TEST_ACCOUNT, uint256(uint160(TEST_ACCOUNT)));
+        uint256 transferredUserCRCAmount = HUB_V2.balanceOf(TEST_ACCOUNT_1, uint256(uint160(TEST_ACCOUNT_1)));
+        address predictedInstance = _initUserWithBackedCRC(TEST_ACCOUNT_1, BACKING_ASSET);
+        transferredUserCRCAmount -= HUB_V2.balanceOf(TEST_ACCOUNT_1, uint256(uint160(TEST_ACCOUNT_1)));
 
         assertEq(transferredUserCRCAmount, CRC_AMOUNT);
         // Simulate the CowSwap fill
         _simulateCowSwapFill(predictedInstance, BACKING_ASSET, BACKING_ASSET_DEAL_AMOUNT);
 
-        assertFalse(factory.isActiveLBP(TEST_ACCOUNT), "LBP should be inactive before initialization");
+        assertFalse(factory.isActiveLBP(TEST_ACCOUNT_1), "LBP should be inactive before initialization");
         // Create LBP
         _createLBP(predictedInstance);
-        assertTrue(factory.isActiveLBP(TEST_ACCOUNT), "LBP should be active after initialization");
+        assertTrue(factory.isActiveLBP(TEST_ACCOUNT_1), "LBP should be active after initialization");
 
         // Check the Backing instance constants
-        assertEq(CirclesBacking(predictedInstance).BACKER(), TEST_ACCOUNT);
+        assertEq(CirclesBacking(predictedInstance).BACKER(), TEST_ACCOUNT_1);
         assertEq(CirclesBacking(predictedInstance).BACKING_ASSET(), BACKING_ASSET);
-        assertEq(CirclesBacking(predictedInstance).STABLE_CRC(), LIFT_ERC20.ensureERC20(TEST_ACCOUNT, uint8(1)));
+        assertEq(CirclesBacking(predictedInstance).STABLE_CRC(), LIFT_ERC20.ensureERC20(TEST_ACCOUNT_1, uint8(1)));
 
         address lbp = CirclesBacking(predictedInstance).lbp();
 
         // `1e6` is a Balancer LP amount minted to zero address during the pool initialization
         assertEq(IERC20(lbp).balanceOf(predictedInstance), IERC20(lbp).totalSupply() - 1e6);
-        assertEq(factory.backerOf(predictedInstance), TEST_ACCOUNT);
+        assertEq(factory.backerOf(predictedInstance), TEST_ACCOUNT_1);
 
         // Check the state of the deployed pool
         assertTrue(ILBP(lbp).getSwapEnabled(), "Swapping within the created LBP is not enabled");
@@ -319,18 +308,18 @@ contract CirclesBackingFactoryTest is Test {
 
     function test_RevertIf_CreatesLBPWithDifferentBackingAsset(uint8 index) public setBackingAsset(index) {
         // Setup user with CRC and backing
-        _initUserWithBackedCRC(TEST_ACCOUNT, BACKING_ASSET);
+        _initUserWithBackedCRC(TEST_ACCOUNT_1, BACKING_ASSET);
 
         // Create Backing contract for USDT backed LBP pool
         bytes memory data = abi.encode(USDT);
-        vm.prank(TEST_ACCOUNT);
+        vm.prank(TEST_ACCOUNT_1);
         vm.expectRevert(); // -> EvmError: CreateCollision
-        HUB_V2.safeTransferFrom(TEST_ACCOUNT, address(factory), uint256(uint160(TEST_ACCOUNT)), CRC_AMOUNT, data);
+        HUB_V2.safeTransferFrom(TEST_ACCOUNT_1, address(factory), uint256(uint160(TEST_ACCOUNT_1)), CRC_AMOUNT, data);
     }
 
     function test_RevertIf_LiquidityAddedNotByOwner(uint8 index) public setBackingAsset(index) {
         // Setup user with CRC and backing
-        address predictedInstance = _initUserWithBackedCRC(TEST_ACCOUNT, BACKING_ASSET);
+        address predictedInstance = _initUserWithBackedCRC(TEST_ACCOUNT_1, BACKING_ASSET);
 
         // Simulate the CowSwap fill
         _simulateCowSwapFill(predictedInstance, BACKING_ASSET, BACKING_ASSET_DEAL_AMOUNT);
@@ -350,24 +339,24 @@ contract CirclesBackingFactoryTest is Test {
         bytes memory userData = abi.encode(ILBP.JoinKind.EXACT_TOKENS_IN_FOR_BPT_OUT, amountsIn);
         IVault.JoinPoolRequest memory request = IVault.JoinPoolRequest(tokens, amountsIn, userData, false);
 
-        vm.prank(TEST_ACCOUNT);
+        vm.prank(TEST_ACCOUNT_1);
         vm.expectRevert("BAL#328"); // BAL#328 stands for `CALLER_IS_NOT_LBP_OWNER`
         IVault(VAULT).joinPool(
             poolId,
-            TEST_ACCOUNT, // sender
-            TEST_ACCOUNT, // recipient
+            TEST_ACCOUNT_1, // sender
+            TEST_ACCOUNT_1, // recipient
             request
         );
     }
 
     function test_RevertIf_LBPIsAlreadyCreated(uint8 index) public setBackingAsset(index) {
-        address predictedInstance = _initUserWithBackedCRC(TEST_ACCOUNT, BACKING_ASSET);
+        address predictedInstance = _initUserWithBackedCRC(TEST_ACCOUNT_1, BACKING_ASSET);
 
         _simulateCowSwapFill(predictedInstance, BACKING_ASSET, BACKING_ASSET_DEAL_AMOUNT);
 
         // Create LBP first time
         _createLBP(predictedInstance);
-        assertTrue(factory.isActiveLBP(TEST_ACCOUNT), "LBP should be active after initialization");
+        assertTrue(factory.isActiveLBP(TEST_ACCOUNT_1), "LBP should be active after initialization");
         assertNotEq(CirclesBacking(predictedInstance).lbp(), address(0));
 
         // Try to create second time => revert
@@ -376,11 +365,11 @@ contract CirclesBackingFactoryTest is Test {
     }
 
     function test_RevertIf_InsufficientBackingAssetOnOrderContract(uint8 index) public setBackingAsset(index) {
-        address predictedInstance = _initUserWithBackedCRC(TEST_ACCOUNT, BACKING_ASSET);
+        address predictedInstance = _initUserWithBackedCRC(TEST_ACCOUNT_1, BACKING_ASSET);
         CirclesBacking circlesBackingInstance = CirclesBacking(predictedInstance);
         // We simulate that settlment is "filled" without transfering `BACKING_ASSET` to the instance
         bytes memory storedUid = circlesBackingInstance.storedOrderUid();
-        bytes32 slot = keccak256(abi.encodePacked(storedUid, uint256(ORDER_FILLED_SLOT_INDEX)));
+        bytes32 slot = keccak256(abi.encodePacked(storedUid, uint256(ORDER_FILLED_SLOT)));
         vm.store(COWSWAP_SETTLEMENT, slot, bytes32(uint256(BACKING_ASSET_DEAL_AMOUNT)));
 
         assertEq(circlesBackingInstance.BACKING_ASSET(), BACKING_ASSET);
@@ -391,14 +380,14 @@ contract CirclesBackingFactoryTest is Test {
     }
 
     function test_BalancerPoolTokensRelease(uint8 index) public setBackingAsset(index) {
-        address predictedInstance = _initUserWithBackedCRC(TEST_ACCOUNT, BACKING_ASSET);
+        address predictedInstance = _initUserWithBackedCRC(TEST_ACCOUNT_1, BACKING_ASSET);
 
         // Simulate fill
         _simulateCowSwapFill(predictedInstance, BACKING_ASSET, BACKING_ASSET_DEAL_AMOUNT);
 
         // Create LBP
         _createLBP(predictedInstance);
-        assertTrue(factory.isActiveLBP(TEST_ACCOUNT), "LBP should be active after initialization");
+        assertTrue(factory.isActiveLBP(TEST_ACCOUNT_1), "LBP should be active after initialization");
 
         // Warp enough time so that release is possible
         vm.warp(block.timestamp + YEAR);
@@ -407,16 +396,18 @@ contract CirclesBackingFactoryTest is Test {
         uint256 frozenLPTokensAmount = IERC20(lbp).balanceOf(predictedInstance);
 
         // Release from backer
-        vm.prank(TEST_ACCOUNT);
-        CirclesBacking(predictedInstance).releaseBalancerPoolTokens(TEST_ACCOUNT);
-        assertFalse(factory.isActiveLBP(TEST_ACCOUNT), "LBP should be inactive after tokens released from the contract");
+        vm.prank(TEST_ACCOUNT_1);
+        CirclesBacking(predictedInstance).releaseBalancerPoolTokens(TEST_ACCOUNT_1);
+        assertFalse(
+            factory.isActiveLBP(TEST_ACCOUNT_1), "LBP should be inactive after tokens released from the contract"
+        );
 
         assertEq(IERC20(lbp).balanceOf(predictedInstance), 0);
-        assertEq(IERC20(lbp).balanceOf(TEST_ACCOUNT), frozenLPTokensAmount);
+        assertEq(IERC20(lbp).balanceOf(TEST_ACCOUNT_1), frozenLPTokensAmount);
     }
 
     function test_GlobalBalancerPoolTokensRelease(uint8 index) public setBackingAsset(index) {
-        address predictedInstance = _initUserWithBackedCRC(TEST_ACCOUNT, BACKING_ASSET);
+        address predictedInstance = _initUserWithBackedCRC(TEST_ACCOUNT_1, BACKING_ASSET);
 
         vm.prank(FACTORY_ADMIN);
         factory.setReleaseTimestamp(uint32(block.timestamp + YEAR));
@@ -427,7 +418,7 @@ contract CirclesBackingFactoryTest is Test {
         vm.warp(block.timestamp + YEAR);
         // Create LBP
         _createLBP(predictedInstance);
-        assertTrue(factory.isActiveLBP(TEST_ACCOUNT), "LBP should be active after initialization");
+        assertTrue(factory.isActiveLBP(TEST_ACCOUNT_1), "LBP should be active after initialization");
 
         // Warp enough time so that release is possible
         vm.warp(block.timestamp + 2 days);
@@ -440,17 +431,19 @@ contract CirclesBackingFactoryTest is Test {
         // Release time of the backing contract is greater than the global release time
         assertGt(CirclesBacking(predictedInstance).balancerPoolTokensUnlockTimestamp(), factory.releaseTimestamp());
         // Release from backer
-        vm.prank(TEST_ACCOUNT);
-        CirclesBacking(predictedInstance).releaseBalancerPoolTokens(TEST_ACCOUNT);
+        vm.prank(TEST_ACCOUNT_1);
+        CirclesBacking(predictedInstance).releaseBalancerPoolTokens(TEST_ACCOUNT_1);
 
-        assertFalse(factory.isActiveLBP(TEST_ACCOUNT), "LBP should be inactive after tokens released from the contract");
+        assertFalse(
+            factory.isActiveLBP(TEST_ACCOUNT_1), "LBP should be inactive after tokens released from the contract"
+        );
 
         assertEq(IERC20(lbp).balanceOf(predictedInstance), 0);
-        assertEq(IERC20(lbp).balanceOf(TEST_ACCOUNT), frozenLPTokensAmount);
+        assertEq(IERC20(lbp).balanceOf(TEST_ACCOUNT_1), frozenLPTokensAmount);
     }
 
     function test_RevertIf_NotifyReleaseCalledByNonBackingContract(uint8 index) public setBackingAsset(index) {
-        address predictedInstance = _initUserWithBackedCRC(TEST_ACCOUNT, BACKING_ASSET);
+        address predictedInstance = _initUserWithBackedCRC(TEST_ACCOUNT_1, BACKING_ASSET);
 
         // Simulate fill
         _simulateCowSwapFill(predictedInstance, BACKING_ASSET, BACKING_ASSET_DEAL_AMOUNT);
@@ -463,7 +456,7 @@ contract CirclesBackingFactoryTest is Test {
     }
 
     function test_RevertIf_ReleaseBalancerPoolDeadlineNotMet(uint8 index) public setBackingAsset(index) {
-        address predictedInstance = _initUserWithBackedCRC(TEST_ACCOUNT, BACKING_ASSET);
+        address predictedInstance = _initUserWithBackedCRC(TEST_ACCOUNT_1, BACKING_ASSET);
 
         // Simulate fill
         _simulateCowSwapFill(predictedInstance, BACKING_ASSET, BACKING_ASSET_DEAL_AMOUNT);
@@ -472,15 +465,15 @@ contract CirclesBackingFactoryTest is Test {
         _createLBP(predictedInstance);
 
         // Attempt to release too soon
-        vm.prank(TEST_ACCOUNT);
+        vm.prank(TEST_ACCOUNT_1);
         vm.expectRevert(
             abi.encodeWithSelector(CirclesBacking.TokensLockedUntilTimestamp.selector, block.timestamp + YEAR)
         );
-        CirclesBacking(predictedInstance).releaseBalancerPoolTokens(TEST_ACCOUNT);
+        CirclesBacking(predictedInstance).releaseBalancerPoolTokens(TEST_ACCOUNT_1);
     }
 
     function test_RevertIf_NotBacker(uint8 index) public setBackingAsset(index) {
-        address predictedInstance = _initUserWithBackedCRC(TEST_ACCOUNT, BACKING_ASSET);
+        address predictedInstance = _initUserWithBackedCRC(TEST_ACCOUNT_1, BACKING_ASSET);
 
         // Simulate fill
         _simulateCowSwapFill(predictedInstance, BACKING_ASSET, BACKING_ASSET_DEAL_AMOUNT);
@@ -492,15 +485,15 @@ contract CirclesBackingFactoryTest is Test {
         // Some random address tries to release
         vm.prank(address(0));
         vm.expectRevert(CirclesBacking.NotBacker.selector);
-        CirclesBacking(predictedInstance).releaseBalancerPoolTokens(TEST_ACCOUNT);
+        CirclesBacking(predictedInstance).releaseBalancerPoolTokens(TEST_ACCOUNT_1);
     }
 
     function test_RevertIf_BackingAssetIsNotSupported() public {
         // Attempt to back with USDT, which is not supported in the factory
         bytes memory data = abi.encode(USDT);
-        vm.prank(TEST_ACCOUNT);
+        vm.prank(TEST_ACCOUNT_1);
         vm.expectRevert(abi.encodeWithSelector(CirclesBackingFactory.UnsupportedBackingAsset.selector, USDT));
-        HUB_V2.safeTransferFrom(TEST_ACCOUNT, address(factory), uint256(uint160(TEST_ACCOUNT)), CRC_AMOUNT, data);
+        HUB_V2.safeTransferFrom(TEST_ACCOUNT_1, address(factory), uint256(uint160(TEST_ACCOUNT_1)), CRC_AMOUNT, data);
     }
 
     function test_RevertIf_CreateLBPCalledByNonBackingContract() public {
@@ -528,19 +521,19 @@ contract CirclesBackingFactoryTest is Test {
         address lbp = LBP_FACTORY.create("TestPool", "TP", tokens, weights, 0.01 ether, msg.sender, true);
 
         // Put some LP tokens in testAccount
-        deal(lbp, TEST_ACCOUNT, 1 ether);
+        deal(lbp, TEST_ACCOUNT_1, 1 ether);
 
         // Approve the factory
-        vm.prank(TEST_ACCOUNT);
+        vm.prank(TEST_ACCOUNT_1);
         IERC20(lbp).approve(address(factory), 1 ether);
 
-        vm.prank(TEST_ACCOUNT);
+        vm.prank(TEST_ACCOUNT_1);
         vm.expectRevert(CirclesBackingFactory.OnlyTwoTokenLBPSupported.selector);
         factory.exitLBP(lbp, 1 ether);
     }
 
     function test_ExitDualAssetPool(uint8 index) public setBackingAsset(index) {
-        address predictedInstance = _initUserWithBackedCRC(TEST_ACCOUNT, BACKING_ASSET);
+        address predictedInstance = _initUserWithBackedCRC(TEST_ACCOUNT_1, BACKING_ASSET);
         _simulateCowSwapFill(predictedInstance, BACKING_ASSET, BACKING_ASSET_DEAL_AMOUNT);
         _createLBP(predictedInstance);
 
@@ -549,53 +542,57 @@ contract CirclesBackingFactoryTest is Test {
         vm.warp(block.timestamp + YEAR);
 
         // Release from backer
-        vm.prank(TEST_ACCOUNT);
-        CirclesBacking(predictedInstance).releaseBalancerPoolTokens(TEST_ACCOUNT);
-        assertFalse(factory.isActiveLBP(TEST_ACCOUNT), "LBP should be inactive after tokens released from the contract");
+        vm.prank(TEST_ACCOUNT_1);
+        CirclesBacking(predictedInstance).releaseBalancerPoolTokens(TEST_ACCOUNT_1);
+        assertFalse(
+            factory.isActiveLBP(TEST_ACCOUNT_1), "LBP should be inactive after tokens released from the contract"
+        );
 
-        uint256 LPTokensAmount = IERC20(lbp).balanceOf(TEST_ACCOUNT);
+        uint256 LPTokensAmount = IERC20(lbp).balanceOf(TEST_ACCOUNT_1);
         // Approve
-        vm.prank(TEST_ACCOUNT);
+        vm.prank(TEST_ACCOUNT_1);
         IERC20(lbp).approve(address(factory), LPTokensAmount);
 
         bytes32 poolId = ILBP(lbp).getPoolId();
         (IERC20[] memory tokens, uint256[] memory balances,) = IVault(VAULT).getPoolTokens(poolId);
 
         // Exit
-        vm.prank(TEST_ACCOUNT);
+        vm.prank(TEST_ACCOUNT_1);
         factory.exitLBP(lbp, LPTokensAmount);
 
-        assertApproxEqAbs(tokens[0].balanceOf(TEST_ACCOUNT), balances[0], MAX_DELTA);
-        assertApproxEqAbs(tokens[1].balanceOf(TEST_ACCOUNT), balances[1], MAX_DELTA);
+        assertApproxEqAbs(tokens[0].balanceOf(TEST_ACCOUNT_1), balances[0], MAX_DELTA);
+        assertApproxEqAbs(tokens[1].balanceOf(TEST_ACCOUNT_1), balances[1], MAX_DELTA);
     }
 
     function test_PartialExitDualAssetPool(uint8 index) public setBackingAsset(index) {
-        address predictedInstance = _initUserWithBackedCRC(TEST_ACCOUNT, BACKING_ASSET);
+        address predictedInstance = _initUserWithBackedCRC(TEST_ACCOUNT_1, BACKING_ASSET);
         _simulateCowSwapFill(predictedInstance, BACKING_ASSET, BACKING_ASSET_DEAL_AMOUNT);
         _createLBP(predictedInstance);
 
         address lbp = CirclesBacking(predictedInstance).lbp();
         vm.warp(block.timestamp + YEAR);
         // Release from backer
-        vm.prank(TEST_ACCOUNT);
-        CirclesBacking(predictedInstance).releaseBalancerPoolTokens(TEST_ACCOUNT);
-        assertFalse(factory.isActiveLBP(TEST_ACCOUNT), "LBP should be inactive after tokens released from the contract");
+        vm.prank(TEST_ACCOUNT_1);
+        CirclesBacking(predictedInstance).releaseBalancerPoolTokens(TEST_ACCOUNT_1);
+        assertFalse(
+            factory.isActiveLBP(TEST_ACCOUNT_1), "LBP should be inactive after tokens released from the contract"
+        );
 
-        uint256 LPTokensAmount = IERC20(lbp).balanceOf(TEST_ACCOUNT);
+        uint256 LPTokensAmount = IERC20(lbp).balanceOf(TEST_ACCOUNT_1);
         // Approve
-        vm.prank(TEST_ACCOUNT);
+        vm.prank(TEST_ACCOUNT_1);
         IERC20(lbp).approve(address(factory), LPTokensAmount);
 
         bytes32 poolId = ILBP(lbp).getPoolId();
 
         // Exit
-        vm.prank(TEST_ACCOUNT);
+        vm.prank(TEST_ACCOUNT_1);
         factory.exitLBP(lbp, LPTokensAmount / 2);
-        assertEq(LPTokensAmount / 2, IERC20(lbp).balanceOf(TEST_ACCOUNT));
+        assertEq(LPTokensAmount / 2, IERC20(lbp).balanceOf(TEST_ACCOUNT_1));
 
         (IERC20[] memory tokens, uint256[] memory balances,) = IVault(VAULT).getPoolTokens(poolId);
-        assertApproxEqAbs(tokens[0].balanceOf(TEST_ACCOUNT), balances[0], MAX_DELTA);
-        assertApproxEqAbs(tokens[1].balanceOf(TEST_ACCOUNT), balances[1], MAX_DELTA);
+        assertApproxEqAbs(tokens[0].balanceOf(TEST_ACCOUNT_1), balances[0], MAX_DELTA);
+        assertApproxEqAbs(tokens[1].balanceOf(TEST_ACCOUNT_1), balances[1], MAX_DELTA);
     }
 
     // -------------------------------------------------------------------------
@@ -603,7 +600,7 @@ contract CirclesBackingFactoryTest is Test {
     // -------------------------------------------------------------------------
 
     function test_RevertIf_OrderNotFilledYet(uint8 index) public setBackingAsset(index) {
-        address predictedInstance = _initUserWithBackedCRC(TEST_ACCOUNT, BACKING_ASSET);
+        address predictedInstance = _initUserWithBackedCRC(TEST_ACCOUNT_1, BACKING_ASSET);
 
         vm.expectRevert(CirclesBacking.OrderNotFilledYet.selector);
         _createLBP(predictedInstance);
@@ -611,7 +608,7 @@ contract CirclesBackingFactoryTest is Test {
 
     function test_RevertIf_UserIsNotHuman() public {
         // Mock the HUB so that isHuman(avatar) returns false (e.g. avatar is group)
-        address user = TEST_ACCOUNT;
+        address user = TEST_ACCOUNT_1;
         vm.mockCall(address(HUB_V2), abi.encodeWithSelector(HUB_V2.isHuman.selector, user), abi.encode(false));
 
         // Attempt to back with CRC => should revert with OnlyHumanAvatarsAreSupported
@@ -635,6 +632,6 @@ contract CirclesBackingFactoryTest is Test {
     }
 
     function test_PersonalCirclesAccount() public {
-        assertEq(LIFT_ERC20.ensureERC20(TEST_ACCOUNT, uint8(1)), factory.getPersonalCircles(TEST_ACCOUNT));
+        assertEq(LIFT_ERC20.ensureERC20(TEST_ACCOUNT_1, uint8(1)), factory.getPersonalCircles(TEST_ACCOUNT_1));
     }
 }

@@ -5,6 +5,7 @@ import {IHubV2} from "circles-contracts-v2/hub/IHub.sol";
 
 interface IHub is IHubV2 {
     function inflationDayZero() external view returns (uint256);
+    function day(uint256 _timestamp) external view returns (uint64);
     function trust(address _trustReceiver, uint96 _expiry) external;
     function personalMint() external;
     function registerHuman(address _inviter, bytes32 _metadataDigest) external;
