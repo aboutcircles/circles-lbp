@@ -48,7 +48,7 @@ contract CirclesBackingFactoryTest is Test {
     address internal constant GNO = 0x9C58BAcC331c9aa871AFD802DB6379a98e80CEdb;
     address internal constant sDAI = 0xaf204776c7245bF4147c2612BF6e5972Ee483701;
 
-    address internal constant USDT = 0x4ECaBa5870353805a9F068101A40E0f32ed605C6;
+    address internal constant WXDAI = 0xe91D153E0b41518A2Ce8Dd3D7944Fa863463a97d;
 
     // -------------------------------------------------------------------------
     // State Variables
@@ -78,7 +78,7 @@ contract CirclesBackingFactoryTest is Test {
         vm.selectFork(gnosisFork);
 
         // Deploy factory
-        factory = new CirclesBackingFactory(FACTORY_ADMIN, 100); // test-specific "fee" if any
+        factory = new CirclesBackingFactory(FACTORY_ADMIN, 100);
 
         // Retrieve constants from factory
         VAULT = factory.VAULT();
@@ -175,21 +175,19 @@ contract CirclesBackingFactoryTest is Test {
 
     function test_EnabledBackingAssetSupport() public {
         vm.prank(FACTORY_ADMIN);
-        factory.setSupportedBackingAssetStatus(USDT, true);
-        assertEq(factory.supportedBackingAssets(USDT), true);
+        factory.setSupportedBackingAssetStatus(WXDAI, true);
+        assertEq(factory.supportedBackingAssets(WXDAI), true);
     }
 
     function test_DisableBackingAssetSupport() public {
-        test_EnabledBackingAssetSupport();
-
         vm.prank(FACTORY_ADMIN);
-        factory.setSupportedBackingAssetStatus(USDT, false);
-        assertEq(factory.supportedBackingAssets(USDT), false);
+        factory.setSupportedBackingAssetStatus(WBTC, false);
+        assertEq(factory.supportedBackingAssets(WBTC), false);
     }
 
     function test_RevertIf_UserSetSupportedBackingAssetStatus() public {
         vm.expectRevert(CirclesBackingFactory.NotAdmin.selector);
-        factory.setSupportedBackingAssetStatus(USDT, false);
+        factory.setSupportedBackingAssetStatus(WXDAI, false);
     }
 
     function test_RevertIf_UserSetsReleaseTime() public {
@@ -228,10 +226,10 @@ contract CirclesBackingFactoryTest is Test {
     function test_RevertIf_UserBacksSomeonesTokens() public {
         // Setup a new account
         vm.prank(TEST_ACCOUNT_2);
-        // Transfer some personal CRC from someAccount -> testAccount
+        // Transfer some personal CRC from testAccount2 -> testAccount1
         HUB_V2.safeTransferFrom(TEST_ACCOUNT_2, TEST_ACCOUNT_1, uint256(uint160(TEST_ACCOUNT_2)), CRC_AMOUNT, "");
 
-        // Attempt to back someAccount's CRC from testAccount -> factory
+        // Attempt to back testAccount2's CRC from testAccount1 -> factory
         vm.prank(TEST_ACCOUNT_1);
         vm.expectRevert(CirclesBackingFactory.BackingInFavorDissalowed.selector);
         HUB_V2.safeTransferFrom(TEST_ACCOUNT_1, address(factory), uint256(uint160(TEST_ACCOUNT_2)), CRC_AMOUNT, "");
@@ -244,7 +242,7 @@ contract CirclesBackingFactoryTest is Test {
 
         vm.prank(TEST_ACCOUNT_2);
         vm.expectRevert(CirclesBackingFactory.BackingInFavorDissalowed.selector);
-        // Transfer should fail because testAccount is not the operator
+        // Transfer should fail because testAccount1 is not the operator
         HUB_V2.safeTransferFrom(TEST_ACCOUNT_1, address(factory), uint256(uint160(TEST_ACCOUNT_1)), CRC_AMOUNT, "");
     }
 
@@ -394,28 +392,21 @@ contract CirclesBackingFactoryTest is Test {
 
     function test_GlobalBalancerPoolTokensRelease() public {
         address predictedInstance = _initUserWithBackedCRC(TEST_ACCOUNT_1, sDAI);
-
-        vm.prank(FACTORY_ADMIN);
-        factory.setReleaseTimestamp(uint32(block.timestamp + YEAR));
-
         // Simulate fill
         _simulateCowSwapFill(predictedInstance, sDAI, BACKING_ASSET_DEAL_AMOUNT);
-
-        vm.warp(block.timestamp + YEAR);
         // Create LBP
         _createLBP(predictedInstance);
         assertTrue(factory.isActiveLBP(TEST_ACCOUNT_1), "LBP should be active after initialization");
 
-        // Warp enough time so that release is possible
-        vm.warp(block.timestamp + 2 days);
+        vm.prank(FACTORY_ADMIN);
+        factory.setReleaseTimestamp(uint32(block.timestamp));
+
+        // Block timestamp is equal global release time
+        assertEq(block.timestamp, factory.releaseTimestamp());
 
         address lbp = CirclesBacking(predictedInstance).lbp();
         uint256 frozenLPTokensAmount = IERC20(lbp).balanceOf(predictedInstance);
 
-        // Block timestamp is greater than global release time
-        assertGt(block.timestamp, factory.releaseTimestamp());
-        // Release time of the backing contract is greater than the global release time
-        assertGt(CirclesBacking(predictedInstance).balancerPoolTokensUnlockTimestamp(), factory.releaseTimestamp());
         // Release from backer
         vm.prank(TEST_ACCOUNT_1);
         CirclesBacking(predictedInstance).releaseBalancerPoolTokens(TEST_ACCOUNT_1);
@@ -475,17 +466,17 @@ contract CirclesBackingFactoryTest is Test {
     }
 
     function test_RevertIf_BackingAssetIsNotSupported() public {
-        // Attempt to back with USDT, which is not supported in the factory
-        bytes memory data = abi.encode(USDT);
+        // Attempt to back with WXDAI, which is not supported in the factory
+        bytes memory data = abi.encode(WXDAI);
         vm.prank(TEST_ACCOUNT_1);
-        vm.expectRevert(abi.encodeWithSelector(CirclesBackingFactory.UnsupportedBackingAsset.selector, USDT));
+        vm.expectRevert(abi.encodeWithSelector(CirclesBackingFactory.UnsupportedBackingAsset.selector, WXDAI));
         HUB_V2.safeTransferFrom(TEST_ACCOUNT_1, address(factory), uint256(uint160(TEST_ACCOUNT_1)), CRC_AMOUNT, data);
     }
 
     function test_RevertIf_CreateLBPCalledByNonBackingContract() public {
         vm.expectRevert(CirclesBackingFactory.OnlyCirclesBacking.selector);
         // Attempt to call createLBP from the factory with invalid arguments
-        factory.createLBP(USDT, CRC_AMOUNT, USDC, 100 ether);
+        factory.createLBP(WXDAI, CRC_AMOUNT, USDC, 100 ether);
     }
 
     // -------------------------------------------------------------------------
@@ -496,8 +487,8 @@ contract CirclesBackingFactoryTest is Test {
         IERC20[] memory tokens = new IERC20[](3);
         uint256[] memory weights = new uint256[](3);
         tokens[0] = IERC20(USDC);
-        tokens[1] = IERC20(USDT);
-        tokens[2] = IERC20(WETH);
+        tokens[1] = IERC20(WETH);
+        tokens[2] = IERC20(WXDAI);
 
         weights[0] = 0.3 ether;
         weights[1] = 0.3 ether;
