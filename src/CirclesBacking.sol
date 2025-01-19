@@ -7,6 +7,13 @@ import {IFactory} from "src/interfaces/IFactory.sol";
 import {ILBP} from "src/interfaces/ILBP.sol";
 import {IVault} from "src/interfaces/IVault.sol";
 
+/**
+ * @title Circles Backing Instance.
+ * @notice Instance holds USDC and stable CRC, initiates Cowswap order to swap USDC into backing asset.
+ *         During Cowswap order execution posthook creates Liquidity Bootstraping Pool with stable CRC
+ *         and backing asset as underlying tokens. Instance holds Balancer Pool Tokens one year until
+ *         they are released by backer.
+ */
 contract CirclesBacking {
     // Errors
     /// Method is allowed to be called only by Factory.
