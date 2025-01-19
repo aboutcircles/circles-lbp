@@ -11,8 +11,6 @@ contract CirclesBacking {
     // Errors
     /// Method is allowed to be called only by Factory.
     error OnlyFactory();
-    /// Function must be called only by Cowswap posthook.
-    error OrderNotFilledYet();
     /// LBP is already created.
     error AlreadyCreated();
     /// Cowswap solver must transfer the swap result before calling posthook.
@@ -48,6 +46,10 @@ contract CirclesBacking {
     address public immutable STABLE_CRC;
     /// @notice Amount of ERC20 stable Circles, which is used in lbp.
     uint256 public immutable STABLE_CRC_AMOUNT;
+    /// @dev USDC.e contract address.
+    address internal immutable USDC;
+    /// @dev Amount of USDC.e to use.
+    uint256 internal immutable USDC_AMOUNT;
 
     // Storage
     /// @notice Address of created Liquidity Bootstrapping Pool, which represents backing liquidity.
@@ -60,17 +62,17 @@ contract CirclesBacking {
     constructor() {
         FACTORY = IFactory(msg.sender);
         // init core values
-        (BACKER, BACKING_ASSET, STABLE_CRC, STABLE_CRC_AMOUNT) = FACTORY.backingParameters();
+        (BACKER, BACKING_ASSET, STABLE_CRC, STABLE_CRC_AMOUNT, USDC, USDC_AMOUNT) = FACTORY.backingParameters();
     }
 
     // Backing logic
 
     /// @notice Initiates Cowswap order, approves Cowswap to spend USDC and presigns order.
-    function initiateCowswapOrder(address usdc, uint256 tradeAmount, bytes memory orderUid) external {
+    function initiateCowswapOrder(bytes memory orderUid) external {
         if (msg.sender != address(FACTORY)) revert OnlyFactory();
 
         // Approve USDC to Vault Relay contract
-        IERC20(usdc).approve(VAULT_RELAY, tradeAmount);
+        IERC20(USDC).approve(VAULT_RELAY, USDC_AMOUNT);
 
         // Place the order using "setPreSignature"
         COWSWAP_SETTLEMENT.setPreSignature(orderUid, true);
@@ -85,25 +87,31 @@ contract CirclesBacking {
     /// @notice Method, which should be used as Cowswap posthook interaction.
     ///         Creates preconfigured LBP and provides liquidity to it.
     function createLBP() external {
+        if (lbp != address(0)) revert AlreadyCreated();
         // Check if the order has been filled on the CowSwap settlement contract
         uint256 filledAmount = COWSWAP_SETTLEMENT.filledAmount(storedOrderUid);
-        if (filledAmount == 0) revert OrderNotFilledYet();
-        if (lbp != address(0)) revert AlreadyCreated();
-
-        // Backing asset balance of the contract
-        uint256 backingAssetBalance = IERC20(BACKING_ASSET).balanceOf(address(this));
-        if (backingAssetBalance == 0) revert InsufficientBackingAssetBalance();
+        address backingAsset;
+        uint256 backingAmount;
+        if (filledAmount == 0) {
+            // use USDC to back in case cowswap order is not executed
+            backingAsset = USDC;
+            backingAmount = USDC_AMOUNT;
+        } else {
+            // use picked backing asset in case cowswap order is executed
+            backingAsset = BACKING_ASSET;
+            backingAmount = IERC20(backingAsset).balanceOf(address(this));
+            if (backingAmount == 0) revert InsufficientBackingAssetBalance();
+        }
 
         // Create LBP
         bytes32 poolId;
         IVault.JoinPoolRequest memory request;
         address vault;
-        (lbp, poolId, request, vault) =
-            FACTORY.createLBP(STABLE_CRC, STABLE_CRC_AMOUNT, BACKING_ASSET, backingAssetBalance);
+        (lbp, poolId, request, vault) = FACTORY.createLBP(STABLE_CRC, STABLE_CRC_AMOUNT, backingAsset, backingAmount);
 
         // approve vault
         IERC20(STABLE_CRC).approve(vault, STABLE_CRC_AMOUNT);
-        IERC20(BACKING_ASSET).approve(vault, backingAssetBalance);
+        IERC20(backingAsset).approve(vault, backingAmount);
 
         // provide liquidity into lbp
         IVault(vault).joinPool(

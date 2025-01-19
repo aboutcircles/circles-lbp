@@ -195,7 +195,7 @@ contract CirclesBackingFactory {
         // Construct the order UID
         bytes memory orderUid = abi.encodePacked(orderDigest, instance, uint32(VALID_TO));
         // Initiate cowswap order
-        CirclesBacking(instance).initiateCowswapOrder(USDC, TRADE_AMOUNT, orderUid);
+        CirclesBacking(instance).initiateCowswapOrder(orderUid);
         emit CirclesBackingInitiated(backer, instance, backingAsset, stableCRCAddress);
     }
 
@@ -305,7 +305,9 @@ contract CirclesBackingFactory {
             address transientBacker,
             address transientBackingAsset,
             address transientStableCRC,
-            uint256 transientStableCRCAmount
+            uint256 transientStableCRCAmount,
+            address usdc,
+            uint256 usdcAmount
         )
     {
         assembly {
@@ -314,6 +316,8 @@ contract CirclesBackingFactory {
             transientStableCRC := tload(3)
             transientStableCRCAmount := tload(4)
         }
+        usdc = USDC;
+        usdcAmount = TRADE_AMOUNT;
     }
 
     // cowswap app data

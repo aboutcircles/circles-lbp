@@ -16,5 +16,12 @@ interface IFactory {
     function backingParameters()
         external
         view
-        returns (address backer, address backingAsset, address personalStableCRC, uint256 stableCRCAmount);
+        returns (
+            address backer,
+            address backingAsset,
+            address personalStableCRC,
+            uint256 stableCRCAmount,
+            address usdc,
+            uint256 usdcAmount
+        );
 }

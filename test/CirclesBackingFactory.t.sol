@@ -251,7 +251,7 @@ contract CirclesBackingFactoryTest is Test {
         address predictedInstance = _initUserWithBackedCRC(TEST_ACCOUNT_1, WETH);
 
         vm.expectRevert(CirclesBacking.OnlyFactory.selector);
-        CirclesBacking(predictedInstance).initiateCowswapOrder(USDC, 0, "");
+        CirclesBacking(predictedInstance).initiateCowswapOrder("");
     }
 
     // -------------------------------------------------------------------------
@@ -575,12 +575,28 @@ contract CirclesBackingFactoryTest is Test {
     // -------------------------------------------------------------------------
     // Order Fill / Reverts
     // -------------------------------------------------------------------------
-
+    /*
     function test_RevertIf_OrderNotFilledYet() public {
         address predictedInstance = _initUserWithBackedCRC(TEST_ACCOUNT_1, WETH);
 
         vm.expectRevert(CirclesBacking.OrderNotFilledYet.selector);
         _createLBP(predictedInstance);
+    }
+    */
+    // solution state: proposal
+    function test_HandleOrderFailureCreateLBPBackedWithUSDC() public {
+        address predictedInstance = _initUserWithBackedCRC(TEST_ACCOUNT_1, WETH);
+        _createLBP(predictedInstance);
+        address lbp = CirclesBacking(predictedInstance).lbp();
+
+        // `1e6` is a Balancer LP amount minted to zero address during the pool initialization
+        assertEq(IERC20(lbp).balanceOf(predictedInstance), IERC20(lbp).totalSupply() - 1e6);
+        assertEq(factory.backerOf(predictedInstance), TEST_ACCOUNT_1);
+
+        // Check the state of the deployed pool
+        assertTrue(ILBP(lbp).getSwapEnabled(), "Swapping within the created LBP is not enabled");
+        assertEq(ILBP(lbp).getOwner(), predictedInstance);
+        assertEq(ILBP(lbp).getSwapFeePercentage(), 0.01 ether);
     }
 
     function test_RevertIf_UserIsNotHuman() public {
