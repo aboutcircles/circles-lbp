@@ -575,17 +575,20 @@ contract CirclesBackingFactoryTest is Test {
     // -------------------------------------------------------------------------
     // Order Fill / Reverts
     // -------------------------------------------------------------------------
-    /*
+
     function test_RevertIf_OrderNotFilledYet() public {
         address predictedInstance = _initUserWithBackedCRC(TEST_ACCOUNT_1, WETH);
 
         vm.expectRevert(CirclesBacking.OrderNotFilledYet.selector);
         _createLBP(predictedInstance);
     }
-    */
+
     // solution state: proposal
     function test_HandleOrderFailureCreateLBPBackedWithUSDC() public {
         address predictedInstance = _initUserWithBackedCRC(TEST_ACCOUNT_1, WETH);
+        // pass 1 day
+        vm.warp(block.timestamp + 1 days + 1);
+        // deploys LBP with USDC instead of backing asset
         _createLBP(predictedInstance);
         address lbp = CirclesBacking(predictedInstance).lbp();
 

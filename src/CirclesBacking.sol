@@ -11,6 +11,8 @@ contract CirclesBacking {
     // Errors
     /// Method is allowed to be called only by Factory.
     error OnlyFactory();
+    /// Function must be called only by Cowswap posthook.
+    error OrderNotFilledYet();
     /// LBP is already created.
     error AlreadyCreated();
     /// Cowswap solver must transfer the swap result before calling posthook.
@@ -50,6 +52,8 @@ contract CirclesBacking {
     address internal immutable USDC;
     /// @dev Amount of USDC.e to use.
     uint256 internal immutable USDC_AMOUNT;
+    /// @dev Timestamp, when cowswap order is considered to be stuck.
+    uint256 internal immutable ORDER_STUCK_DEADLINE;
 
     // Storage
     /// @notice Address of created Liquidity Bootstrapping Pool, which represents backing liquidity.
@@ -63,6 +67,7 @@ contract CirclesBacking {
         FACTORY = IFactory(msg.sender);
         // init core values
         (BACKER, BACKING_ASSET, STABLE_CRC, STABLE_CRC_AMOUNT, USDC, USDC_AMOUNT) = FACTORY.backingParameters();
+        ORDER_STUCK_DEADLINE = block.timestamp + 1 days;
     }
 
     // Backing logic
@@ -92,15 +97,18 @@ contract CirclesBacking {
         uint256 filledAmount = COWSWAP_SETTLEMENT.filledAmount(storedOrderUid);
         address backingAsset;
         uint256 backingAmount;
-        if (filledAmount == 0) {
-            // use USDC to back in case cowswap order is not executed
-            backingAsset = USDC;
-            backingAmount = USDC_AMOUNT;
-        } else {
+
+        if (filledAmount != 0) {
             // use picked backing asset in case cowswap order is executed
             backingAsset = BACKING_ASSET;
             backingAmount = IERC20(backingAsset).balanceOf(address(this));
             if (backingAmount == 0) revert InsufficientBackingAssetBalance();
+        } else if (ORDER_STUCK_DEADLINE < block.timestamp) {
+            // use USDC to back in case cowswap order is not executed
+            backingAsset = USDC;
+            backingAmount = USDC_AMOUNT;
+        } else {
+            revert OrderNotFilledYet();
         }
 
         // Create LBP
