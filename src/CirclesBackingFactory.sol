@@ -176,24 +176,8 @@ contract CirclesBackingFactory {
         IERC20(USDC).transferFrom(backer, instance, TRADE_AMOUNT);
         // transfer stable circles
         IERC20(stableCRCAddress).transfer(instance, stableCRCAmount);
-
-        // create order
-        (, bytes32 appData) = getAppData(instance);
-        // Generate order UID using the "getUid" contract
-        (bytes32 orderDigest,) = GET_UID_CONTRACT.getUid(
-            USDC, // sellToken
-            backingAsset, // buyToken
-            instance, // receiver
-            TRADE_AMOUNT, // sellAmount
-            1, // buyAmount: Determined by off-chain logic or Cowswap solvers
-            VALID_TO, // order expiry
-            appData, // appData hash
-            0, // FeeAmount
-            true, // IsSell
-            false // PartiallyFillable
-        );
-        // Construct the order UID
-        bytes memory orderUid = abi.encodePacked(orderDigest, instance, uint32(VALID_TO));
+        // generate order cowswap order uid
+        bytes memory orderUid = generateOrderUID(instance, backingAsset, 1);
         // Initiate cowswap order
         CirclesBacking(instance).initiateCowswapOrder(orderUid);
         emit CirclesBackingInitiated(backer, instance, backingAsset, stableCRCAddress);
@@ -285,6 +269,7 @@ contract CirclesBackingFactory {
     // View functions
 
     // counterfactual
+
     /**
      * @notice Computes the deterministic address for CirclesBacking contract.
      * @param backer Address which is backing circles.
@@ -320,7 +305,8 @@ contract CirclesBackingFactory {
         usdcAmount = TRADE_AMOUNT;
     }
 
-    // cowswap app data
+    // cowswap appdata and order uid
+
     /// @notice Returns stringified json and its hash representing app data for Cowswap.
     function getAppData(address _circlesBackingInstance)
         public
@@ -332,7 +318,33 @@ contract CirclesBackingFactory {
         appDataHash = keccak256(bytes(appDataString));
     }
 
+    /// @notice Returns Cowswap order uid generated based on instance, backing asset and amount to buy.
+    function generateOrderUID(address instance, address backingAsset, uint256 buyAmount)
+        public
+        view
+        returns (bytes memory orderUid)
+    {
+        // create order
+        (, bytes32 appData) = getAppData(instance);
+        // Generate order UID using the "getUid" contract
+        (bytes32 orderDigest,) = GET_UID_CONTRACT.getUid(
+            USDC, // sellToken
+            backingAsset, // buyToken
+            instance, // receiver
+            TRADE_AMOUNT, // sellAmount
+            buyAmount, // buyAmount
+            VALID_TO, // order expiry
+            appData, // appData hash
+            0, // FeeAmount
+            true, // IsSell
+            false // PartiallyFillable
+        );
+        // Construct the order UID
+        orderUid = abi.encodePacked(orderDigest, instance, uint32(VALID_TO));
+    }
+
     // personal circles
+
     /// @notice Returns address of avatar InflationaryCircles.
     /// @dev this call will revert, if avatar is not registered as human or group in Hub contract
     function getPersonalCircles(address avatar) public returns (address inflationaryCircles) {
