@@ -7,7 +7,6 @@ on:
 
 env:
   FOUNDRY_PROFILE: ci
-  GNOSIS_RPC: "https://rpc.gnosischain.com"
 
 jobs:
   check:
@@ -41,6 +40,8 @@ jobs:
         id: build
 
       - name: Run Forge tests
+        env:
+          GNOSIS_RPC: ${{ secrets.ARCHIVE_RPC }}
         run: |
           forge test -vvv
         id: test
