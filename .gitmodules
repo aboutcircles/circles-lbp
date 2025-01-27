@@ -7,3 +7,6 @@
 [submodule "lib/circles-contracts-v2"]
 	path = lib/circles-contracts-v2
 	url = https://github.com/aboutcircles/circles-contracts-v2
+[submodule "lib/composable-cow"]
+	path = lib/composable-cow
+	url = https://github.com/cowprotocol/composable-cow
