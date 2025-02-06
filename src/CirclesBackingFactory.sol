@@ -25,7 +25,7 @@ contract CirclesBackingFactory {
     /// Backing is allowed only for Hub human avatars.
     error OnlyHumanAvatarsAreSupported();
     /// Backing in favor is dissalowed. Back only your personal CRC.
-    error BackingInFavorDissalowed();
+    error BackingInFavorDisallowed();
     /// Circles backing does not support `requestedAsset` asset.
     error UnsupportedBackingAsset(address requestedAsset);
     /// Deployment of CirclesBacking instance initiated by user `backer` has failed.
@@ -34,7 +34,7 @@ contract CirclesBackingFactory {
     error OnlyCirclesBacking();
     /// Unauthorized access.
     error NotAdmin();
-    /// Exit Liquidity Bootstraping Pool supports only two tokens pools.
+    /// Exit Liquidity Bootstrapping Pool supports only two tokens pools.
     error OnlyTwoTokenLBPSupported();
 
     // Events
@@ -436,7 +436,7 @@ contract CirclesBackingFactory {
         if (value != CRC_AMOUNT) revert NotExactlyRequiredCRCAmount(CRC_AMOUNT, value);
         address avatar = address(uint160(id));
         if (!HUB_V2.isHuman(avatar)) revert OnlyHumanAvatarsAreSupported();
-        if (operator != from || from != avatar) revert BackingInFavorDissalowed();
+        if (operator != from || from != avatar) revert BackingInFavorDisallowed();
         // handling personal CRC
         // get stable address
         address stableCRC = getPersonalCircles(avatar);
