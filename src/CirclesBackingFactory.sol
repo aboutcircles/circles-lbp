@@ -242,13 +242,13 @@ contract CirclesBackingFactory {
     /// @notice General wrapper function over vault.exitPool, allows to extract
     ///         liquidity from pool by approving this Factory to spend Balancer Pool Tokens.
     /// @dev Required Balancer Pool Token approval for bptAmount before call
-    function exitLBP(address lbp, uint256 bptAmount) external {
+    function exitLBP(address lbp, uint256 bptAmount, uint256 minAmountOut0, uint256 minAmountOut1) external {
         // transfer bpt tokens from msg.sender
         IERC20(lbp).transferFrom(msg.sender, address(this), bptAmount);
 
         uint256[] memory minAmountsOut = new uint256[](2);
-        minAmountsOut[0] = uint256(0);
-        minAmountsOut[1] = uint256(0);
+        minAmountsOut[0] = minAmountOut0;
+        minAmountsOut[1] = minAmountOut1;
 
         bytes32 poolId = ILBP(lbp).getPoolId();
 
