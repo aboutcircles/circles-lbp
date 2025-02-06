@@ -6,14 +6,14 @@ import {CirclesBackingFactory} from "src/CirclesBackingFactory.sol";
 
 contract DeployFactory is Script {
     address deployer = address(0x6BF173798733623cc6c221eD52c010472247d861);
-    CirclesBackingFactory public circlesBackingFactory; // 0xD608978aD1e1473fa98BaD368e767C5b11e3b3cE
+    CirclesBackingFactory public circlesBackingFactory; // 0xD10D53Ec77cE25829b7d270D736403218AF22Ad9
 
     function setUp() public {}
 
     function run() public {
         vm.startBroadcast(deployer);
 
-        circlesBackingFactory = new CirclesBackingFactory(deployer, 1);
+        circlesBackingFactory = new CirclesBackingFactory(deployer, 10);
 
         vm.stopBroadcast();
         console.log(address(circlesBackingFactory), "CirclesBackingFactory");
@@ -22,16 +22,16 @@ contract DeployFactory is Script {
 
 /*
 curl -X 'POST' \
-  'https://api.cow.fi/xdai/api/v1/orders' \
+  'https://barn.api.cow.fi/xdai/api/v1/orders' \
   -H 'accept: application/json' \
   -H 'Content-Type: application/json' \
   -d '{
   "sellToken": "0x2a22f9c3b484c3629090FeED35F17Ff8F88f76F0",
   "buyToken": "0x6A023CCd1ff6F2045C3309768eAd9E68F978f6e1",
   "receiver": "0xe75F06c807038D7D38e4f9716FF953eA1dA39157",
-  "sellAmount": "1000000",
+  "sellAmount": "10000000",
   "buyAmount": "1",
-  "validTo": 1894324190,
+  "validTo": 1896512045,
   "feeAmount": "0",
   "kind": "sell",
   "partiallyFillable": false,
