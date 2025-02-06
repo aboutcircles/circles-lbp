@@ -231,7 +231,7 @@ contract CirclesBackingFactoryTest is Test {
 
         // Attempt to back testAccount2's CRC from testAccount1 -> factory
         vm.prank(TEST_ACCOUNT_1);
-        vm.expectRevert(CirclesBackingFactory.BackingInFavorDissalowed.selector);
+        vm.expectRevert(CirclesBackingFactory.BackingInFavorDisallowed.selector);
         HUB_V2.safeTransferFrom(TEST_ACCOUNT_1, address(factory), uint256(uint160(TEST_ACCOUNT_2)), CRC_AMOUNT, "");
     }
 
@@ -241,7 +241,7 @@ contract CirclesBackingFactoryTest is Test {
         HUB_V2.setApprovalForAll(TEST_ACCOUNT_2, true);
 
         vm.prank(TEST_ACCOUNT_2);
-        vm.expectRevert(CirclesBackingFactory.BackingInFavorDissalowed.selector);
+        vm.expectRevert(CirclesBackingFactory.BackingInFavorDisallowed.selector);
         // Transfer should fail because testAccount1 is not the operator
         HUB_V2.safeTransferFrom(TEST_ACCOUNT_1, address(factory), uint256(uint160(TEST_ACCOUNT_1)), CRC_AMOUNT, "");
     }
@@ -506,7 +506,7 @@ contract CirclesBackingFactoryTest is Test {
 
         vm.prank(TEST_ACCOUNT_1);
         vm.expectRevert(CirclesBackingFactory.OnlyTwoTokenLBPSupported.selector);
-        factory.exitLBP(lbp, 1 ether);
+        factory.exitLBP(lbp, 1 ether, 0, 0);
     }
 
     function test_ExitDualAssetPool() public {
@@ -535,7 +535,7 @@ contract CirclesBackingFactoryTest is Test {
 
         // Exit
         vm.prank(TEST_ACCOUNT_1);
-        factory.exitLBP(lbp, LPTokensAmount);
+        factory.exitLBP(lbp, LPTokensAmount, 0, 0);
 
         assertApproxEqAbs(tokens[0].balanceOf(TEST_ACCOUNT_1), balances[0], MAX_DELTA);
         assertApproxEqAbs(tokens[1].balanceOf(TEST_ACCOUNT_1), balances[1], MAX_DELTA);
@@ -564,7 +564,7 @@ contract CirclesBackingFactoryTest is Test {
 
         // Exit
         vm.prank(TEST_ACCOUNT_1);
-        factory.exitLBP(lbp, LPTokensAmount / 2);
+        factory.exitLBP(lbp, LPTokensAmount / 2, 0, 0);
         assertEq(LPTokensAmount / 2, IERC20(lbp).balanceOf(TEST_ACCOUNT_1));
 
         (IERC20[] memory tokens, uint256[] memory balances,) = IVault(VAULT).getPoolTokens(poolId);
