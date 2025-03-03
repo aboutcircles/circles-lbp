@@ -3,7 +3,7 @@ pragma solidity ^0.8.28;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ICowswapSettlement} from "src/interfaces/ICowswapSettlement.sol";
-import {IFactory} from "src/interfaces/IFactory.sol";
+import {ICirclesBackingFactory} from "src/interfaces/ICirclesBackingFactory.sol";
 import {ILBP} from "src/interfaces/ILBP.sol";
 import {IVault} from "src/interfaces/IVault.sol";
 
@@ -46,7 +46,7 @@ contract CirclesBacking {
 
     // Immutables
     /// @dev Circles Backing Factory.
-    IFactory internal immutable FACTORY;
+    ICirclesBackingFactory internal immutable FACTORY;
     /// @notice Address of circles avatar, which has backed his personal circles.
     address public immutable BACKER;
     /// @notice Address of supported backing asset, which is used as underlying asset in lbp.
@@ -71,7 +71,7 @@ contract CirclesBacking {
     bytes public storedOrderUid;
 
     constructor() {
-        FACTORY = IFactory(msg.sender);
+        FACTORY = ICirclesBackingFactory(msg.sender);
         // init core values
         (BACKER, BACKING_ASSET, STABLE_CRC, STABLE_CRC_AMOUNT, USDC, USDC_AMOUNT) = FACTORY.backingParameters();
         ORDER_STUCK_DEADLINE = block.timestamp + 1 days;

@@ -1,66 +1,81 @@
-## Foundry
+# Circles Backing & Factory
 
-**Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
+## Overview
 
-Foundry consists of:
+This repository contains smart contracts for Circles Backing and Circles Backing Factory. The Circles Backing contract facilitates the backing of USDC and inflationary Circles (CRC) using Cowswap and Balancer Liquidity Bootstrapping Pools (LBP). The Circles Backing Factory is responsible for deploying Circles Backing instances and managing supported backing assets.
 
--   **Forge**: Ethereum testing framework (like Truffle, Hardhat and DappTools).
--   **Cast**: Swiss army knife for interacting with EVM smart contracts, sending transactions and getting chain data.
--   **Anvil**: Local Ethereum node, akin to Ganache, Hardhat Network.
--   **Chisel**: Fast, utilitarian, and verbose solidity REPL.
+## Contracts
 
-## Documentation
+### CirclesBacking.sol
+- Manages the backing process for inflationary CRC and USDC.
+- Interacts with Cowswap for order execution.
+- Creates an LBP upon order fulfillment.
+- Holds Balancer Pool Tokens (BPT) for one year before allowing the backer to release them.
 
-https://book.getfoundry.sh/
+### CirclesBackingFactory.sol
+- Deploys new Circles Backing instances.
+- Manages supported backing assets and global Balancer Pool Token release.
+- Facilitates the creation of LBPs.
+- Ensures only `HubV2` human avatars can back their personal CRC.
 
-## Usage
+## Getting Started
 
-### Build
+### Prerequisites
+- Install [Foundry](https://book.getfoundry.sh/) for Solidity development.
+- Ensure you have an Ethereum node or use a forked network for testing.
 
-```shell
-$ forge build
+### Installation
+
+Clone the repository and install dependencies:
+
+```sh
+git clone <repository-url>
+cd <project-folder>
+forge install
 ```
 
-### Test
+### Compilation
 
-```shell
-$ forge test
+Compile the smart contracts using Foundry:
+
+```sh
+forge build
 ```
 
-### Format
+### Running Tests
 
-```shell
-$ forge fmt
+Before running tests, make sure to set up the `GNOSIS_RPC` environment variable in your `.env` file for forked testing.
+Run the test suite with Foundry:
+
+```sh
+forge test
 ```
 
-### Gas Snapshots
+To run a specific test:
 
-```shell
-$ forge snapshot
+```sh
+forge test --match-test test_CreateLBP
 ```
 
-### Anvil
+### Coverage
 
-```shell
-$ anvil
+To check the test coverage of the project, run the following command:
+
+```sh
+forge coverage --no-match-coverage "test|script"
 ```
 
-### Deploy
+The `--no-match-coverage "test|script"` flag ensures that only relevant files coverage is measured.
 
-```shell
-$ forge script script/Counter.s.sol:CounterScript --rpc-url <your_rpc_url> --private-key <your_private_key>
+## Project Structure
+
 ```
-
-### Cast
-
-```shell
-$ cast <subcommand>
-```
-
-### Help
-
-```shell
-$ forge --help
-$ anvil --help
-$ cast --help
+├── src/                    # Smart contract source code
+│   ├── CirclesBacking.sol  # Circles Backing contract
+│   ├── CirclesBackingFactory.sol # Factory contract
+├── test/                   # Foundry tests
+│   ├── CirclesBackingFactory.t.sol # Tests for factory and backing
+├── script/                 # Deployment scripts
+│   ├── Deploy.s.sol        # Deployment script for Foundry
+└── foundry.toml            # Foundry configuration file
 ```

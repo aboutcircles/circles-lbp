@@ -25,7 +25,7 @@ contract CirclesBackingFactory {
     /// Backing is allowed only for Hub human avatars.
     error OnlyHumanAvatarsAreSupported();
     /// Backing in favor is dissalowed. Back only your personal CRC.
-    error BackingInFavorDissalowed();
+    error BackingInFavorDisallowed();
     /// Circles backing does not support `requestedAsset` asset.
     error UnsupportedBackingAsset(address requestedAsset);
     /// Deployment of CirclesBacking instance initiated by user `backer` has failed.
@@ -34,7 +34,7 @@ contract CirclesBackingFactory {
     error OnlyCirclesBacking();
     /// Unauthorized access.
     error NotAdmin();
-    /// Exit Liquidity Bootstraping Pool supports only two tokens pools.
+    /// Exit Liquidity Bootstrapping Pool supports only two tokens pools.
     error OnlyTwoTokenLBPSupported();
 
     // Events
@@ -242,13 +242,13 @@ contract CirclesBackingFactory {
     /// @notice General wrapper function over vault.exitPool, allows to extract
     ///         liquidity from pool by approving this Factory to spend Balancer Pool Tokens.
     /// @dev Required Balancer Pool Token approval for bptAmount before call
-    function exitLBP(address lbp, uint256 bptAmount) external {
+    function exitLBP(address lbp, uint256 bptAmount, uint256 minAmountOut0, uint256 minAmountOut1) external {
         // transfer bpt tokens from msg.sender
         IERC20(lbp).transferFrom(msg.sender, address(this), bptAmount);
 
         uint256[] memory minAmountsOut = new uint256[](2);
-        minAmountsOut[0] = uint256(0);
-        minAmountsOut[1] = uint256(0);
+        minAmountsOut[0] = minAmountOut0;
+        minAmountsOut[1] = minAmountOut1;
 
         bytes32 poolId = ILBP(lbp).getPoolId();
 
@@ -436,7 +436,7 @@ contract CirclesBackingFactory {
         if (value != CRC_AMOUNT) revert NotExactlyRequiredCRCAmount(CRC_AMOUNT, value);
         address avatar = address(uint160(id));
         if (!HUB_V2.isHuman(avatar)) revert OnlyHumanAvatarsAreSupported();
-        if (operator != from || from != avatar) revert BackingInFavorDissalowed();
+        if (operator != from || from != avatar) revert BackingInFavorDisallowed();
         // handling personal CRC
         // get stable address
         address stableCRC = getPersonalCircles(avatar);
