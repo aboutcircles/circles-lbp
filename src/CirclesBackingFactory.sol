@@ -3,13 +3,15 @@ pragma solidity ^0.8.28;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
-import {IGetUid} from "src/interfaces/IGetUid.sol";
 import {IVault} from "src/interfaces/IVault.sol";
 import {INoProtocolFeeLiquidityBootstrappingPoolFactory} from "src/interfaces/ILBPFactory.sol";
 import {ILBP} from "src/interfaces/ILBP.sol";
 import {IHub} from "src/interfaces/IHub.sol";
 import {ILiftERC20} from "src/interfaces/ILiftERC20.sol";
 import {CirclesBacking} from "src/CirclesBacking.sol";
+import {CirclesBackingOrder} from "src/CirclesBackingOrder.sol";
+import {ValueFactory} from "src/ValueFactory.sol";
+import {IConditionalOrder, GPv2Order} from "composable-cow/BaseConditionalOrder.sol";
 
 /**
  * @title Circles Backing Factory.
@@ -61,20 +63,21 @@ contract CirclesBackingFactory {
     address public immutable ADMIN;
 
     // Cowswap order constants.
-    /// @notice Helper contract for crafting Uid.
-    IGetUid public constant GET_UID_CONTRACT = IGetUid(address(0xCA51403B524dF7dA6f9D6BFc64895AD833b5d711));
     /// @notice USDC.e contract address.
     address public constant USDC = 0x2a22f9c3b484c3629090FeED35F17Ff8F88f76F0;
     /// @notice ERC20 decimals value for USDC.e.
     uint256 internal constant USDC_DECIMALS = 1e6;
     /// @notice Amount of USDC.e to use in a swap for backing asset.
     uint256 public immutable TRADE_AMOUNT;
-    /// @notice Deadline for orders expiration - set as timestamp in 5 years after deployment.
-    uint32 public immutable VALID_TO;
+    /// @notice Cowswap Settlement domain separator.
+    bytes32 public constant DOMAIN_SEPARATOR =
+        bytes32(0x8f05589c4b810bc2f706854508d66d447cd971f8354a4bb0b3471ceb0a466bc7);
     /// @notice Order appdata divided into 2 strings to insert deployed instance address.
     string public constant preAppData =
         '{"version":"1.1.0","appCode":"Circles backing powered by AboutCircles","metadata":{"hooks":{"version":"0.1.0","post":[{"target":"';
     string public constant postAppData = '","callData":"0x13e8f89f","gasLimit":"6000000"}]}}}'; // Updated calldata and gaslimit for createLBP
+    CirclesBackingOrder public immutable circlesBackingOrder;
+    ValueFactory public immutable valueFactory;
 
     /// LBP constants.
     /// @notice Balancer v2 Vault.
@@ -138,11 +141,12 @@ contract CirclesBackingFactory {
     constructor(address admin, uint256 usdcInteger) {
         ADMIN = admin;
         TRADE_AMOUNT = usdcInteger * USDC_DECIMALS;
-        VALID_TO = uint32(block.timestamp + 1825 days);
         supportedBackingAssets[address(0x8e5bBbb09Ed1ebdE8674Cda39A0c169401db4252)] = true; // WBTC
         supportedBackingAssets[address(0x6A023CCd1ff6F2045C3309768eAd9E68F978f6e1)] = true; // WETH
         supportedBackingAssets[address(0x9C58BAcC331c9aa871AFD802DB6379a98e80CEdb)] = true; // GNO
         supportedBackingAssets[address(0xaf204776c7245bF4147c2612BF6e5972Ee483701)] = true; // sDAI
+        circlesBackingOrder = new CirclesBackingOrder(USDC, TRADE_AMOUNT);
+        valueFactory = new ValueFactory(TRADE_AMOUNT, USDC_DECIMALS);
     }
 
     // Admin logic
@@ -166,21 +170,52 @@ contract CirclesBackingFactory {
     {
         if (!supportedBackingAssets[backingAsset]) revert UnsupportedBackingAsset(backingAsset);
 
-        setTransientParameters(backer, backingAsset, stableCRCAddress, stableCRCAmount);
+        // generate the order app data
+        (, bytes32 appData) = getAppData(computeAddress(backer));
+
+        setTransientParameters(backer, backingAsset, stableCRCAddress, stableCRCAmount, appData);
 
         address instance = deployCirclesBacking(backer);
 
-        setTransientParameters(address(0), address(0), address(0), uint256(0));
+        setTransientParameters(address(0), address(0), address(0), uint256(0), bytes32(0));
 
         // transfer USDC.e
         IERC20(USDC).transferFrom(backer, instance, TRADE_AMOUNT);
         // transfer stable circles
         IERC20(stableCRCAddress).transfer(instance, stableCRCAmount);
-        // generate order cowswap order uid
-        bytes memory orderUid = generateOrderUID(instance, backingAsset, 1);
+
         // Initiate cowswap order
-        CirclesBacking(instance).initiateCowswapOrder(orderUid);
+        (uint256 buyAmount, IConditionalOrder.ConditionalOrderParams memory params, bytes memory orderUid) =
+            getConditionalParamsAndOrderUid(instance, backingAsset, uint32(block.timestamp + 1 days), appData);
+
+        CirclesBacking(instance).initiateCowswapOrder(buyAmount, params, orderUid);
         emit CirclesBackingInitiated(backer, instance, backingAsset, stableCRCAddress);
+    }
+
+    function getConditionalParamsAndOrderUid(address owner, address backingAsset, uint32 orderDeadline, bytes32 appData)
+        public
+        view
+        returns (uint256 buyAmount, IConditionalOrder.ConditionalOrderParams memory params, bytes memory orderUid)
+    {
+        buyAmount = valueFactory.getValue(backingAsset);
+        params = IConditionalOrder.ConditionalOrderParams({
+            handler: IConditionalOrder(circlesBackingOrder),
+            salt: keccak256(abi.encode(owner, block.timestamp)),
+            staticInput: abi.encode(backingAsset, buyAmount, orderDeadline, appData) // CirclesBackingOrder.OrderStaticInput
+        });
+
+        GPv2Order.Data memory order = getOrder(owner, backingAsset, buyAmount, orderDeadline, appData);
+        bytes32 digest = GPv2Order.hash(order, DOMAIN_SEPARATOR);
+
+        orderUid = abi.encodePacked(digest, owner, orderDeadline);
+    }
+
+    function getOrder(address owner, address buyToken, uint256 buyAmount, uint32 validTo, bytes32 appData)
+        public
+        view
+        returns (GPv2Order.Data memory order)
+    {
+        order = circlesBackingOrder.getOrder(owner, buyToken, buyAmount, validTo, appData);
     }
 
     // LBP logic
@@ -291,6 +326,7 @@ contract CirclesBackingFactory {
             address transientBackingAsset,
             address transientStableCRC,
             uint256 transientStableCRCAmount,
+            bytes32 transientAppData,
             address usdc,
             uint256 usdcAmount
         )
@@ -300,6 +336,7 @@ contract CirclesBackingFactory {
             transientBackingAsset := tload(2)
             transientStableCRC := tload(3)
             transientStableCRCAmount := tload(4)
+            transientAppData := tload(5)
         }
         usdc = USDC;
         usdcAmount = TRADE_AMOUNT;
@@ -316,31 +353,6 @@ contract CirclesBackingFactory {
         string memory instanceAddressStr = addressToString(_circlesBackingInstance);
         appDataString = string.concat(preAppData, instanceAddressStr, postAppData);
         appDataHash = keccak256(bytes(appDataString));
-    }
-
-    /// @notice Returns Cowswap order uid generated based on instance, backing asset and amount to buy.
-    function generateOrderUID(address instance, address backingAsset, uint256 buyAmount)
-        public
-        view
-        returns (bytes memory orderUid)
-    {
-        // create order
-        (, bytes32 appData) = getAppData(instance);
-        // Generate order UID using the "getUid" contract
-        (bytes32 orderDigest,) = GET_UID_CONTRACT.getUid(
-            USDC, // sellToken
-            backingAsset, // buyToken
-            instance, // receiver
-            TRADE_AMOUNT, // sellAmount
-            buyAmount, // buyAmount
-            VALID_TO, // order expiry
-            appData, // appData hash
-            0, // FeeAmount
-            true, // IsSell
-            false // PartiallyFillable
-        );
-        // Construct the order UID
-        orderUid = abi.encodePacked(orderDigest, instance, uint32(VALID_TO));
     }
 
     // personal circles
@@ -388,13 +400,15 @@ contract CirclesBackingFactory {
         address backer,
         address backingAsset,
         address personalStableCRC,
-        uint256 stableCRCAmount
+        uint256 stableCRCAmount,
+        bytes32 appData
     ) internal {
         assembly {
             tstore(1, backer)
             tstore(2, backingAsset)
             tstore(3, personalStableCRC)
             tstore(4, stableCRCAmount)
+            tstore(5, appData)
         }
     }
 

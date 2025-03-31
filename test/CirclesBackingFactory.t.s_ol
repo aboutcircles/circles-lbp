@@ -198,7 +198,21 @@ contract CirclesBackingFactoryTest is Test {
     // -------------------------------------------------------------------------
     // Factory Hooks & Access Control
     // -------------------------------------------------------------------------
+    /*
+    function test_RevertIf_DeploymentFailed() public {
+        // Give user USDC
+        deal(USDC, TEST_ACCOUNT_1, USDC_START_AMOUNT);
 
+        // Approve factory to spend USDC
+        vm.prank(TEST_ACCOUNT_1);
+        IERC20(USDC).approve(address(factory), USDC_START_AMOUNT);
+
+        // Transfer exactly CRC_AMOUNT from user to factory (HUB -> factory)
+        bytes memory data = abi.encode(WETH);
+        vm.prank(TEST_ACCOUNT_1);
+        HUB_V2.safeTransferFrom{gas: 560_290}(TEST_ACCOUNT_1, address(factory), uint256(uint160(TEST_ACCOUNT_1)), CRC_AMOUNT, data);
+    }
+    */
     function test_RevertIf_FactoryReceiveCalledNotByHubV2() public {
         vm.expectRevert(CirclesBackingFactory.OnlyHub.selector);
         factory.onERC1155Received(TEST_ACCOUNT_1, address(factory), uint256(uint160(TEST_ACCOUNT_1)), CRC_AMOUNT, "");
