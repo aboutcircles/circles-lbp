@@ -2,7 +2,7 @@
 pragma solidity ^0.8.28;
 
 import {IVault} from "src/interfaces/IVault.sol";
-// TODO: refactor libs into interfaces
+import {IConditionalOrder} from "composable-cow/interfaces/IConditionalOrder.sol";
 
 library GPv2Order {
     struct Data {
@@ -18,14 +18,6 @@ library GPv2Order {
         bool partiallyFillable;
         bytes32 sellTokenBalance;
         bytes32 buyTokenBalance;
-    }
-}
-
-library IConditionalOrder {
-    struct ConditionalOrderParams {
-        address handler;
-        bytes32 salt;
-        bytes staticInput;
     }
 }
 

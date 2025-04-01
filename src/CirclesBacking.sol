@@ -24,15 +24,17 @@ contract CirclesBacking is ERC1271Forwarder {
     /// Function must be called only by Cowswap posthook.
     error OrderNotFilledYet();
     /// LBP is already created.
-    error AlreadyCreated();
-    /// Cowswap solver must transfer the swap result before calling posthook.
-    error InsufficientBackingAssetBalance();
+    error LBPAlreadyCreated();
+    /// Cowswap solver must transfer `required` amount of backing asset, but transferred `received`.
+    error InsufficientBackingAssetBalance(uint256 received, uint256 required);
     /// Unauthorized access.
     error NotBacker();
     /// Balancer Pool Tokens are still locked until `timestamp`.
     error TokensLockedUntilTimestamp(uint256 timestamp);
 
     error OrderAlreadySettled();
+
+    error SameOrder();
 
     // Events
     /// @notice Emitted when Cowswap order is created, logging order uid.
@@ -70,15 +72,17 @@ contract CirclesBacking is ERC1271Forwarder {
     uint32 internal immutable ORDER_DEADLINE;
 
     // Storage
+    /// @notice Cowswap order uid.
+    bytes public storedOrderUid;
+    /// @notice Composable Cow order hash.
+    bytes32 public orderHash;
+    /// @notice Minimum backing asset amount order allowed to buy.
+    uint256 public buyAmount;
+
     /// @notice Address of created Liquidity Bootstrapping Pool, which represents backing liquidity.
     address public lbp;
     /// @notice Timestamp, when locked balancer pool tokens are allowed to be claimed by backer.
     uint256 public balancerPoolTokensUnlockTimestamp;
-
-    /// @notice Composable Cow order hash.
-    bytes public storedOrderUid;
-    bytes32 public orderHash;
-    uint256 public buyAmount;
 
     constructor() ERC1271Forwarder(ComposableCoW(address(0xfdaFc9d1902f4e0b84f65F49f244b32b31013b74))) {
         FACTORY = ICirclesBackingFactory(msg.sender);
@@ -100,52 +104,30 @@ contract CirclesBacking is ERC1271Forwarder {
         // Approve USDC to Vault Relay contract
         IERC20(USDC).approve(VAULT_RELAY, USDC_AMOUNT);
 
-        // store buy amount
-        buyAmount = value;
-        // store order uid
-        storedOrderUid = orderUid;
-
-        // Store the conditional order hash
-        orderHash = composableCoW.hash(params);
-        // Place the conditional order on composable cow
-        composableCoW.create(params, true);
-
-        emit OrderCreated(storedOrderUid);
+        _createOrder(value, orderUid, params);
     }
-/*    
-    function resetOrder() external {
+
+    function resetCowswapOrder() external {
         uint256 filledAmount = COWSWAP_SETTLEMENT.filledAmount(storedOrderUid);
         if (filledAmount != 0) {
             revert OrderAlreadySettled();
         }
-        // TODO: remove uid from settlement
+
+        (uint256 value, IConditionalOrder.ConditionalOrderParams memory params, bytes memory orderUid) =
+            FACTORY.getConditionalParamsAndOrderUid(address(this), BACKING_ASSET, ORDER_DEADLINE, APP_DATA);
+
+        if (keccak256(storedOrderUid) == keccak256(orderUid)) revert SameOrder();
+
         composableCoW.remove(orderHash);
 
-        (uint256 value, IConditionalOrder.ConditionalOrderParams memory params, bytes memory orderUid) = FACTORY.getConditionalParamsAndOrderUid(
-            address(this),
-            BACKING_ASSET,
-            ORDER_DEADLINE,
-            APP_DATA
-        );
-
-        // store new buy amount
-        buyAmount = value;
-        // store new order uid
-        storedOrderUid = orderUid;
-
-        // Store the conditional order hash
-        orderHash = composableCoW.hash(params);
-        // Place the conditional order on composable cow
-        composableCoW.create(params, true);
-
-        emit OrderCreated(storedOrderUid);
+        _createOrder(value, orderUid, params);
     }
-*/    
+
     /// @notice Method, which should be used as Cowswap posthook interaction.
     ///         Creates preconfigured LBP and provides liquidity to it.
 
     function createLBP() external {
-        if (lbp != address(0)) revert AlreadyCreated();
+        if (lbp != address(0)) revert LBPAlreadyCreated();
         // Check if the order has been filled on the CowSwap settlement contract
         uint256 filledAmount = COWSWAP_SETTLEMENT.filledAmount(storedOrderUid);
         address backingAsset;
@@ -155,7 +137,7 @@ contract CirclesBacking is ERC1271Forwarder {
             // use picked backing asset in case cowswap order is executed
             backingAsset = BACKING_ASSET;
             backingAmount = IERC20(backingAsset).balanceOf(address(this));
-            if (backingAmount < buyAmount) revert InsufficientBackingAssetBalance();
+            if (backingAmount < buyAmount) revert InsufficientBackingAssetBalance(backingAmount, buyAmount);
         } else if (ORDER_DEADLINE < block.timestamp) {
             // use USDC to back in case cowswap order is not executed
             backingAsset = USDC;
@@ -164,7 +146,7 @@ contract CirclesBacking is ERC1271Forwarder {
             revert OrderNotFilledYet();
         }
 
-        // composableCoW.remove(orderHash);
+        composableCoW.remove(orderHash);
 
         // Create LBP
         bytes32 poolId;
@@ -215,6 +197,22 @@ contract CirclesBacking is ERC1271Forwarder {
     }
 
     // Internal functions
+
+    function _createOrder(uint256 value, bytes memory orderUid, IConditionalOrder.ConditionalOrderParams memory params)
+        internal
+    {
+        // store new buy amount
+        buyAmount = value;
+        // store new order uid
+        storedOrderUid = orderUid;
+
+        // Store the conditional order hash
+        orderHash = composableCoW.hash(params);
+        // Place the conditional order on composable cow
+        composableCoW.create(params, true);
+        // emit new order uid
+        emit OrderCreated(orderUid);
+    }
 
     function _endWeights() internal pure returns (uint256[] memory endWeights) {
         endWeights = new uint256[](2);

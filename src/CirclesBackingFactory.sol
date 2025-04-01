@@ -11,7 +11,8 @@ import {ILiftERC20} from "src/interfaces/ILiftERC20.sol";
 import {CirclesBacking} from "src/CirclesBacking.sol";
 import {CirclesBackingOrder} from "src/CirclesBackingOrder.sol";
 import {ValueFactory} from "src/ValueFactory.sol";
-import {IConditionalOrder, GPv2Order} from "composable-cow/BaseConditionalOrder.sol";
+import {GPv2Order} from "composable-cow/BaseConditionalOrder.sol";
+import {IConditionalOrder} from "composable-cow/interfaces/IConditionalOrder.sol";
 
 /**
  * @title Circles Backing Factory.
