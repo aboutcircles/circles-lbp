@@ -76,7 +76,13 @@ interface ICirclesBackingFactory {
         external
         pure
         returns (string memory appDataString, bytes32 appDataHash);
-    function getConditionalParamsAndOrderUid(address owner, address backingAsset, uint32 orderDeadline, bytes32 appData)
+    function getConditionalParamsAndOrderUid(
+        address owner,
+        address backingAsset,
+        uint32 orderDeadline,
+        bytes32 appData,
+        uint256 nonce
+    )
         external
         view
         returns (uint256 buyAmount, IConditionalOrder.ConditionalOrderParams memory params, bytes memory orderUid);

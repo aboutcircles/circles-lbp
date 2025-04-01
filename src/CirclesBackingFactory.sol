@@ -187,13 +187,19 @@ contract CirclesBackingFactory {
 
         // Initiate cowswap order
         (uint256 buyAmount, IConditionalOrder.ConditionalOrderParams memory params, bytes memory orderUid) =
-            getConditionalParamsAndOrderUid(instance, backingAsset, uint32(block.timestamp + 1 days), appData);
+        getConditionalParamsAndOrderUid(instance, backingAsset, uint32(block.timestamp + 1 days), appData, uint256(0));
 
         CirclesBacking(instance).initiateCowswapOrder(buyAmount, params, orderUid);
         emit CirclesBackingInitiated(backer, instance, backingAsset, stableCRCAddress);
     }
 
-    function getConditionalParamsAndOrderUid(address owner, address backingAsset, uint32 orderDeadline, bytes32 appData)
+    function getConditionalParamsAndOrderUid(
+        address owner,
+        address backingAsset,
+        uint32 orderDeadline,
+        bytes32 appData,
+        uint256 nonce
+    )
         public
         view
         returns (uint256 buyAmount, IConditionalOrder.ConditionalOrderParams memory params, bytes memory orderUid)
@@ -201,7 +207,7 @@ contract CirclesBackingFactory {
         buyAmount = valueFactory.getValue(backingAsset);
         params = IConditionalOrder.ConditionalOrderParams({
             handler: IConditionalOrder(circlesBackingOrder),
-            salt: keccak256(abi.encode(owner, block.timestamp)),
+            salt: keccak256(abi.encode(owner, nonce)),
             staticInput: abi.encode(backingAsset, buyAmount, orderDeadline, appData) // CirclesBackingOrder.OrderStaticInput
         });
 

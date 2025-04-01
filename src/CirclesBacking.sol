@@ -109,6 +109,9 @@ contract CirclesBacking is ERC1271Forwarder {
     // Storage
     // -------------------------------------------------------------------------
 
+    /// @notice Stores the current nonce used in conditional order salt generation.
+    uint256 public nonce;
+
     /// @notice Stores the current Cowswap order UID.
     bytes public storedOrderUid;
 
@@ -177,7 +180,7 @@ contract CirclesBacking is ERC1271Forwarder {
         }
 
         (uint256 value, IConditionalOrder.ConditionalOrderParams memory params, bytes memory orderUid) =
-            FACTORY.getConditionalParamsAndOrderUid(address(this), BACKING_ASSET, ORDER_DEADLINE, APP_DATA);
+            FACTORY.getConditionalParamsAndOrderUid(address(this), BACKING_ASSET, ORDER_DEADLINE, APP_DATA, ++nonce);
 
         if (keccak256(storedOrderUid) == keccak256(orderUid)) revert OrderUidIsTheSame();
 
