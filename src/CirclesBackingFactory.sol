@@ -66,8 +66,8 @@ contract CirclesBackingFactory {
     // Cowswap order constants.
     /// @notice USDC.e contract address.
     address public constant USDC = 0x2a22f9c3b484c3629090FeED35F17Ff8F88f76F0;
-    /// @notice ERC20 decimals value for USDC.e.
-    uint256 internal constant USDC_DECIMALS = 1e6;
+    /// @notice USDC.e unit.
+    uint256 internal constant USDC_UNIT = 1e6;
     /// @notice Amount of USDC.e to use in a swap for backing asset.
     uint256 public immutable TRADE_AMOUNT;
     /// @notice Cowswap Settlement domain separator.
@@ -77,6 +77,7 @@ contract CirclesBackingFactory {
     string public constant preAppData =
         '{"version":"1.1.0","appCode":"Circles backing powered by AboutCircles","metadata":{"hooks":{"version":"0.1.0","post":[{"target":"';
     string public constant postAppData = '","callData":"0x13e8f89f","gasLimit":"6000000"}]}}}'; // Updated calldata and gaslimit for createLBP
+
     CirclesBackingOrder public immutable circlesBackingOrder;
     ValueFactory public immutable valueFactory;
 
@@ -141,13 +142,13 @@ contract CirclesBackingFactory {
     // Constructor
     constructor(address admin, uint256 usdcInteger) {
         ADMIN = admin;
-        TRADE_AMOUNT = usdcInteger * USDC_DECIMALS;
+        TRADE_AMOUNT = usdcInteger * USDC_UNIT;
         supportedBackingAssets[address(0x8e5bBbb09Ed1ebdE8674Cda39A0c169401db4252)] = true; // WBTC
         supportedBackingAssets[address(0x6A023CCd1ff6F2045C3309768eAd9E68F978f6e1)] = true; // WETH
         supportedBackingAssets[address(0x9C58BAcC331c9aa871AFD802DB6379a98e80CEdb)] = true; // GNO
         supportedBackingAssets[address(0xaf204776c7245bF4147c2612BF6e5972Ee483701)] = true; // sDAI
         circlesBackingOrder = new CirclesBackingOrder(USDC, TRADE_AMOUNT);
-        valueFactory = new ValueFactory(TRADE_AMOUNT, USDC_DECIMALS);
+        valueFactory = new ValueFactory(USDC, TRADE_AMOUNT);
     }
 
     // Admin logic
@@ -162,10 +163,18 @@ contract CirclesBackingFactory {
         supportedBackingAssets[backingAsset] = status;
     }
 
+    function setOracle(address token, address priceFeed) external onlyAdmin {
+        valueFactory.setOracle(token, priceFeed);
+    }
+
+    function setSlippageBPS(uint256 newSlippageBPS) external onlyAdmin {
+        valueFactory.setSlippageBPS(newSlippageBPS);
+    }
+
     // Backing logic
 
     /// @dev Required upfront approval of this contract for `TRADE_AMOUNT` USDC.e.
-    /// @dev Is called inside onERC1155Received callback by Hub call Circles ERC1155 transferFrom.
+    /// @dev Is called inside onERC1155Received callback by Hub call Circles ERC1155 safeTransferFrom.
     function startBacking(address backer, address backingAsset, address stableCRCAddress, uint256 stableCRCAmount)
         internal
     {
@@ -191,38 +200,6 @@ contract CirclesBackingFactory {
 
         CirclesBacking(instance).initiateCowswapOrder(buyAmount, params, orderUid);
         emit CirclesBackingInitiated(backer, instance, backingAsset, stableCRCAddress);
-    }
-
-    function getConditionalParamsAndOrderUid(
-        address owner,
-        address backingAsset,
-        uint32 orderDeadline,
-        bytes32 appData,
-        uint256 nonce
-    )
-        public
-        view
-        returns (uint256 buyAmount, IConditionalOrder.ConditionalOrderParams memory params, bytes memory orderUid)
-    {
-        buyAmount = valueFactory.getValue(backingAsset);
-        params = IConditionalOrder.ConditionalOrderParams({
-            handler: IConditionalOrder(circlesBackingOrder),
-            salt: keccak256(abi.encode(owner, nonce)),
-            staticInput: abi.encode(backingAsset, buyAmount, orderDeadline, appData) // CirclesBackingOrder.OrderStaticInput
-        });
-
-        GPv2Order.Data memory order = getOrder(owner, backingAsset, buyAmount, orderDeadline, appData);
-        bytes32 digest = GPv2Order.hash(order, DOMAIN_SEPARATOR);
-
-        orderUid = abi.encodePacked(digest, owner, orderDeadline);
-    }
-
-    function getOrder(address owner, address buyToken, uint256 buyAmount, uint32 validTo, bytes32 appData)
-        public
-        view
-        returns (GPv2Order.Data memory order)
-    {
-        order = circlesBackingOrder.getOrder(owner, buyToken, buyAmount, validTo, appData);
     }
 
     // LBP logic
@@ -349,7 +326,7 @@ contract CirclesBackingFactory {
         usdcAmount = TRADE_AMOUNT;
     }
 
-    // cowswap appdata and order uid
+    // Cowswap appdata, order, conditional params and order uid
 
     /// @notice Returns stringified json and its hash representing app data for Cowswap.
     function getAppData(address _circlesBackingInstance)
@@ -360,6 +337,38 @@ contract CirclesBackingFactory {
         string memory instanceAddressStr = addressToString(_circlesBackingInstance);
         appDataString = string.concat(preAppData, instanceAddressStr, postAppData);
         appDataHash = keccak256(bytes(appDataString));
+    }
+
+    function getOrder(address owner, address buyToken, uint256 buyAmount, uint32 validTo, bytes32 appData)
+        public
+        view
+        returns (GPv2Order.Data memory order)
+    {
+        order = circlesBackingOrder.getOrder(owner, buyToken, buyAmount, validTo, appData);
+    }
+
+    function getConditionalParamsAndOrderUid(
+        address owner,
+        address backingAsset,
+        uint32 orderDeadline,
+        bytes32 appData,
+        uint256 nonce
+    )
+        public
+        view
+        returns (uint256 buyAmount, IConditionalOrder.ConditionalOrderParams memory params, bytes memory orderUid)
+    {
+        buyAmount = valueFactory.getValue(backingAsset);
+        params = IConditionalOrder.ConditionalOrderParams({
+            handler: IConditionalOrder(circlesBackingOrder),
+            salt: keccak256(abi.encode(owner, nonce)),
+            staticInput: abi.encode(backingAsset, buyAmount, orderDeadline, appData) // CirclesBackingOrder.OrderStaticInput
+        });
+
+        GPv2Order.Data memory order = getOrder(owner, backingAsset, buyAmount, orderDeadline, appData);
+        bytes32 digest = GPv2Order.hash(order, DOMAIN_SEPARATOR);
+
+        orderUid = abi.encodePacked(digest, owner, orderDeadline);
     }
 
     // personal circles
