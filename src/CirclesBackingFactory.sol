@@ -163,10 +163,21 @@ contract CirclesBackingFactory {
         supportedBackingAssets[backingAsset] = status;
     }
 
+    /**
+     * @notice Sets or removes the oracle for a given token in the ValueFactory.
+     * @dev Only callable by ADMIN. If `priceFeed` is the zero address, the oracle for `token` is removed.
+     * @param token The address of the token to configure.
+     * @param priceFeed The address of the Chainlink-like oracle feed (or zero to remove).
+     */
     function setOracle(address token, address priceFeed) external onlyAdmin {
         valueFactory.setOracle(token, priceFeed);
     }
 
+    /**
+     * @notice Updates the slippage basis points in the ValueFactory.
+     * @dev Only callable by ADMIN. The valid range is typically [0, MAX_BPS].
+     * @param newSlippageBPS The new slippage value in basis points.
+     */
     function setSlippageBPS(uint256 newSlippageBPS) external onlyAdmin {
         valueFactory.setSlippageBPS(newSlippageBPS);
     }

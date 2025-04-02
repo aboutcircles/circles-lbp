@@ -184,7 +184,7 @@ contract ValueFactory is IValueFactory {
      */
     function getValue(bytes calldata data) external view returns (bytes32 value) {
         address buyToken = abi.decode(data, (address));
-        uint256 buyAmount = _defineBuyAmount(buyToken);
+        uint256 buyAmount = _calculateBuyAmount(buyToken);
         value = bytes32(buyAmount);
     }
 
@@ -194,7 +194,7 @@ contract ValueFactory is IValueFactory {
      * @return buyAmount The calculated buy amount
      */
     function getValue(address buyToken) external view returns (uint256 buyAmount) {
-        buyAmount = _defineBuyAmount(buyToken);
+        buyAmount = _calculateBuyAmount(buyToken);
     }
 
     // ---------------------------------------------------------------------
@@ -228,7 +228,7 @@ contract ValueFactory is IValueFactory {
      * @param buyToken The token address to buy
      * @return buyAmount The computed buy amount of `buyToken`
      */
-    function _defineBuyAmount(address buyToken) internal view returns (uint256 buyAmount) {
+    function _calculateBuyAmount(address buyToken) internal view returns (uint256 buyAmount) {
         Oracle memory sellOracle = oracles[SELL_TOKEN];
         Oracle memory buyOracle = oracles[buyToken];
 
