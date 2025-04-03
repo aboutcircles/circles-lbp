@@ -6,77 +6,125 @@ import {ICowswapSettlement} from "src/interfaces/ICowswapSettlement.sol";
 import {IERC20, GPv2Order, IConditionalOrder, BaseConditionalOrder} from "composable-cow/BaseConditionalOrder.sol";
 
 /**
- * @title Circles Backing Order handler.
+ * @title CirclesBackingOrder
+ * @notice Implements logic for handling a Circles Backing Order.
+ * @dev Inherits from BaseConditionalOrder to form a CowSwap-compatible conditional order.
  */
 contract CirclesBackingOrder is BaseConditionalOrder {
-    // static input
+    /**
+     * @notice Holds parameters to construct the order on-chain.
+     * @dev This struct is expected to be ABI-encoded and passed as `staticInput` when calling `getTradeableOrder`.
+     * @param buyToken The token the order attempts to buy (backing asset).
+     * @param buyAmount The desired amount to buy.
+     * @param validTo The timestamp until which this order is valid.
+     * @param appData Application data represents the Cowswap posthook to execute after the swap.
+     */
     struct OrderStaticInput {
-        address buyToken; // backingAsset
+        address buyToken;
         uint256 buyAmount;
         uint32 validTo;
         bytes32 appData;
     }
 
-    /*
-    bytes32 internal constant TYPE_HASH =
-        hex"d5a25ba2e97094ad7d83dc28a6572da797d6b3e7fc6663bd93efb789fc17e489";
-    */
-
-    /// @dev Circles Backing Factory.
+    /**
+     * @notice The Circles Backing Factory that deploys and manages instances of this contract.
+     * @dev Immutable reference to the factory, set at construction.
+     */
     ICirclesBackingFactory internal immutable FACTORY;
-    /// @notice Order sell token contract address.
+
+    /**
+     * @notice The token being sold in this order.
+     */
     address public immutable SELL_TOKEN;
-    /// @notice Order amount to sell.
+
+    /**
+     * @notice The amount of `SELL_TOKEN` to sell.
+     */
     uint256 public immutable SELL_AMOUNT;
-    /// @notice Order fee amount.
+
+    /**
+     * @notice The fee amount for this order (set to 0).
+     */
     uint256 public constant FEE_AMOUNT = 0;
-    /// @notice Order kind: sell.
+
+    /**
+     * @notice The side of the trade (KIND) – here it is a sell order.
+     */
     bytes32 public constant KIND = GPv2Order.KIND_SELL;
-    /// @notice Order type: fill or kill.
+
+    /**
+     * @notice Indicates if the order is partially fillable. Always `false` (fill-or-kill).
+     */
     bool public constant PARTIALLY_FILLABLE = false;
-    /// @notice The TokenBalance marker value for using direct ERC20 balances.
+
+    /**
+     * @notice Marker value indicating direct ERC20 balances usage.
+     */
     bytes32 public constant BALANCE_ERC20 = GPv2Order.BALANCE_ERC20;
 
-    /// @dev If the sell token balance is below the required.
+    /**
+     * @dev Revert reason if the order creator does not hold enough sell tokens.
+     */
     string constant BALANCE_INSUFFICIENT = "balance insufficient";
-    /// @dev If the order expired.
+
+    /**
+     * @dev Revert reason if the order has expired (current time > validTo).
+     */
     string constant ORDER_EXPIRED = "order expired";
-    /// @dev If the backing asset is not supported.
+
+    /**
+     * @dev Revert reason if the requested backing asset is not supported by the factory.
+     */
     string constant ASSET_UNSUPPORTED = "asset unsupported";
 
-    // Constructor
+    /**
+     * @notice Deploys a new CirclesBackingOrder.
+     * @dev The contract is deployed through the CirclesBackingFactory, which passes itself as `msg.sender`.
+     * @param sellToken The token being sold.
+     * @param sellAmount The amount of the token to sell.
+     */
     constructor(address sellToken, uint256 sellAmount) {
         FACTORY = ICirclesBackingFactory(msg.sender);
         SELL_TOKEN = sellToken;
         SELL_AMOUNT = sellAmount;
     }
 
-    // TODO: use FACTORY.supportedBackingAssets in verify buyToken is supported
-
+    /**
+     * @notice Constructs a fully validated, tradeable order if valid conditions are met.
+     * @dev Reverts if:
+     *  - The `owner` does not have enough `SELL_TOKEN` (BALANCE_INSUFFICIENT).
+     *  - The provided backing asset in `staticInput` is not supported (ASSET_UNSUPPORTED).
+     *  - The `validTo` timestamp has elapsed (ORDER_EXPIRED).
+     * @param owner The contract address creating the order (backing instance).
+     * @param staticInput The static input for all discrete orders cut from this conditional order (encoded `OrderStaticInput` struct).
+     * @return order The tradeable order for submission to the CoW Protocol API.
+     */
     function getTradeableOrder(
-        address owner, // instance
-        address, // sender
-        bytes32, // ctx
+        address owner,
+        address, /* sender */
+        bytes32, /* ctx */
         bytes calldata staticInput,
         bytes calldata /* offchainInput */
     ) public view override returns (GPv2Order.Data memory order) {
-        // Require that the sell token balance is present.
+        // Check that the owner has a sufficient SELL_TOKEN balance.
         if (IERC20(SELL_TOKEN).balanceOf(owner) < SELL_AMOUNT) {
             revert IConditionalOrder.OrderNotValid(BALANCE_INSUFFICIENT);
         }
 
-        // Decode the staticInput into the OrderStaticInput parameters.
+        // Decode input parameters needed to build the order.
         OrderStaticInput memory orderStaticInput = abi.decode(staticInput, (OrderStaticInput));
 
+        // Ensure the requested buy token is supported by the factory.
         if (!FACTORY.supportedBackingAssets(orderStaticInput.buyToken)) {
             revert IConditionalOrder.OrderNotValid(ASSET_UNSUPPORTED);
         }
 
-        // Don't allow the order to be placed after valid to has expired.
+        // Ensure the order is still valid within the specified timestamp.
         if (block.timestamp > orderStaticInput.validTo) {
             revert IConditionalOrder.OrderNotValid(ORDER_EXPIRED);
         }
 
+        // Construct and return the fully validated order.
         order = getOrder(
             owner,
             orderStaticInput.buyToken,
@@ -86,24 +134,34 @@ contract CirclesBackingOrder is BaseConditionalOrder {
         );
     }
 
+    /**
+     * @notice Helper function to build the GPv2Order.Data struct.
+     * @dev This is used internally by `getTradeableOrder`.
+     * @param owner The address that is the order owner.
+     * @param buyToken The token the order intends to buy.
+     * @param buyAmount The amount to buy.
+     * @param validTo The timestamp when the order becomes invalid.
+     * @param appData Application data represents the Cowswap posthook to execute after the swap.
+     * @return order The constructed GPv2Order.Data object.
+     */
     function getOrder(address owner, address buyToken, uint256 buyAmount, uint32 validTo, bytes32 appData)
         public
         view
         returns (GPv2Order.Data memory order)
     {
-        order = GPv2Order.Data(
-            IERC20(SELL_TOKEN),
-            IERC20(buyToken),
-            owner,
-            SELL_AMOUNT,
-            buyAmount,
-            validTo,
-            appData,
-            FEE_AMOUNT,
-            KIND,
-            PARTIALLY_FILLABLE,
-            BALANCE_ERC20,
-            BALANCE_ERC20
-        );
+        order = GPv2Order.Data({
+            sellToken: IERC20(SELL_TOKEN),
+            buyToken: IERC20(buyToken),
+            receiver: owner,
+            sellAmount: SELL_AMOUNT,
+            buyAmount: buyAmount,
+            validTo: validTo,
+            appData: appData,
+            feeAmount: FEE_AMOUNT,
+            kind: KIND,
+            partiallyFillable: PARTIALLY_FILLABLE,
+            sellTokenBalance: BALANCE_ERC20,
+            buyTokenBalance: BALANCE_ERC20
+        });
     }
 }
