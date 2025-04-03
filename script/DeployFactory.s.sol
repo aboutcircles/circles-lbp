@@ -6,16 +6,16 @@ import {CirclesBackingFactory} from "src/CirclesBackingFactory.sol";
 
 contract DeployFactory is Script {
     address deployer = address(0x2AEE0499c7E6df0b9639815C0592A835f62D7e2a);
-    CirclesBackingFactory public circlesBackingFactory; // 0xbe6f38445bCddAbeC8819c746C2C884DC0cDD3e1
-    // order 0xc2c4452A93795ea667bE9e2c747B811020DEdD69
-    // value 0xed6CD78617C38fAf1c5696021bB6b7a331Ad38a4
+    CirclesBackingFactory public circlesBackingFactory; // 0x00c99CebB2FD24545e248Aa6aF2F4432D4b6349a
+    // order 0xaBEfc5bFcab0aFbf9a4191C3D78887a7007EfE73
+    // value 0xB2A2541D5002284a7542fcB2e4771490B7AE4d08
 
     function setUp() public {}
 
     function run() public {
         vm.startBroadcast(deployer);
 
-        circlesBackingFactory = new CirclesBackingFactory(deployer, 1);
+        circlesBackingFactory = new CirclesBackingFactory(deployer, 10);
 
         vm.stopBroadcast();
         console.log(address(circlesBackingFactory), "CirclesBackingFactory");
