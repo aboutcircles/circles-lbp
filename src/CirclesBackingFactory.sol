@@ -153,11 +153,11 @@ contract CirclesBackingFactory {
     INoProtocolFeeLiquidityBootstrappingPoolFactory public constant LBP_FACTORY =
         INoProtocolFeeLiquidityBootstrappingPoolFactory(address(0x85a80afee867aDf27B50BdB7b76DA70f1E853062));
 
-    /// @dev LBP token weight 1%.
-    uint256 internal constant WEIGHT_1 = 0.01 ether;
+    /// @dev LBP token weight 10%.
+    uint256 internal constant WEIGHT_10 = 0.1 ether;
 
-    /// @dev LBP token weight 99%.
-    uint256 internal constant WEIGHT_99 = 0.99 ether;
+    /// @dev LBP token weight 90%.
+    uint256 internal constant WEIGHT_90 = 0.9 ether;
 
     /// @dev Swap fee percentage is set to 1% for the LBP.
     uint256 internal constant SWAP_FEE = 0.01 ether;
@@ -371,8 +371,8 @@ contract CirclesBackingFactory {
 
         // Set initial weights
         uint256[] memory weights = new uint256[](2);
-        weights[0] = tokenZero ? WEIGHT_1 : WEIGHT_99;
-        weights[1] = tokenZero ? WEIGHT_99 : WEIGHT_1;
+        weights[0] = tokenZero ? WEIGHT_10 : WEIGHT_90;
+        weights[1] = tokenZero ? WEIGHT_90 : WEIGHT_10;
 
         // Create the LBP
         lbp = LBP_FACTORY.create(
