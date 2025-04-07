@@ -109,6 +109,19 @@ contract CirclesBackingFactory {
      */
     event Released(address indexed backer, address indexed circlesBackingInstance, address indexed lbp);
 
+    /**
+     * @notice Emitted when the global release timestamp is updated.
+     * @param newTimestamp The new release timestamp set for unlocking Balancer pool tokens.
+     */
+    event GlobalReleaseUpdated(uint256 indexed newTimestamp);
+
+    /**
+     * @notice Emitted when the supported status of a backing asset is updated.
+     * @param backingAsset The address of the asset whose support status is updated.
+     * @param status `true` if the asset is now supported, `false` if it is no longer supported.
+     */
+    event AssetSupportedStatusUpdated(address indexed backingAsset, bool indexed status);
+
     /*//////////////////////////////////////////////////////////////
                            Constants
     //////////////////////////////////////////////////////////////*/
@@ -153,14 +166,14 @@ contract CirclesBackingFactory {
     INoProtocolFeeLiquidityBootstrappingPoolFactory public constant LBP_FACTORY =
         INoProtocolFeeLiquidityBootstrappingPoolFactory(address(0x85a80afee867aDf27B50BdB7b76DA70f1E853062));
 
-    /// @dev LBP token weight 10%.
-    uint256 internal constant WEIGHT_10 = 0.1 ether;
+    /// @dev LBP personal CRC token weight 1%.
+    uint256 internal constant WEIGHT_CRC = 0.01 ether;
 
-    /// @dev LBP token weight 90%.
-    uint256 internal constant WEIGHT_90 = 0.9 ether;
+    /// @dev LBP backing token weight 99%.
+    uint256 internal constant WEIGHT_BACKING = 0.99 ether;
 
-    /// @dev Swap fee percentage is set to 1% for the LBP.
-    uint256 internal constant SWAP_FEE = 0.01 ether;
+    /// @dev Swap fee percentage is set to 3% for the LBP.
+    uint256 internal constant SWAP_FEE = 0.03 ether;
 
     /// @dev BPT name and symbol prefix for LBPs created in this factory.
     string internal constant LBP_PREFIX = "circlesBackingLBP-";
@@ -250,10 +263,10 @@ contract CirclesBackingFactory {
         TRADE_AMOUNT = usdcInteger * USDC_UNIT;
 
         // Set default supported assets: WBTC, WETH, GNO, sDAI on Gnosis Chain.
-        supportedBackingAssets[address(0x8e5bBbb09Ed1ebdE8674Cda39A0c169401db4252)] = true; // WBTC
-        supportedBackingAssets[address(0x6A023CCd1ff6F2045C3309768eAd9E68F978f6e1)] = true; // WETH
-        supportedBackingAssets[address(0x9C58BAcC331c9aa871AFD802DB6379a98e80CEdb)] = true; // GNO
-        supportedBackingAssets[address(0xaf204776c7245bF4147c2612BF6e5972Ee483701)] = true; // sDAI
+        _setSupportedBackingAssetStatus(address(0x8e5bBbb09Ed1ebdE8674Cda39A0c169401db4252), true); // WBTC
+        _setSupportedBackingAssetStatus(address(0x6A023CCd1ff6F2045C3309768eAd9E68F978f6e1), true); // WETH
+        _setSupportedBackingAssetStatus(address(0x9C58BAcC331c9aa871AFD802DB6379a98e80CEdb), true); // GNO
+        _setSupportedBackingAssetStatus(address(0xaf204776c7245bF4147c2612BF6e5972Ee483701), true); // sDAI
 
         circlesBackingOrder = new CirclesBackingOrder(USDC, TRADE_AMOUNT);
         valueFactory = new ValueFactory(USDC, TRADE_AMOUNT);
@@ -270,6 +283,7 @@ contract CirclesBackingFactory {
      */
     function setReleaseTimestamp(uint32 timestamp) external onlyAdmin {
         releaseTimestamp = timestamp;
+        emit GlobalReleaseUpdated(timestamp);
     }
 
     /**
@@ -279,7 +293,7 @@ contract CirclesBackingFactory {
      * @param status `true` to support this asset, `false` to disable it.
      */
     function setSupportedBackingAssetStatus(address backingAsset, bool status) external onlyAdmin {
-        supportedBackingAssets[backingAsset] = status;
+        _setSupportedBackingAssetStatus(backingAsset, status);
     }
 
     /**
@@ -371,8 +385,8 @@ contract CirclesBackingFactory {
 
         // Set initial weights
         uint256[] memory weights = new uint256[](2);
-        weights[0] = tokenZero ? WEIGHT_10 : WEIGHT_90;
-        weights[1] = tokenZero ? WEIGHT_90 : WEIGHT_10;
+        weights[0] = tokenZero ? WEIGHT_CRC : WEIGHT_BACKING;
+        weights[1] = tokenZero ? WEIGHT_BACKING : WEIGHT_CRC;
 
         // Create the LBP
         lbp = LBP_FACTORY.create(
@@ -589,6 +603,16 @@ contract CirclesBackingFactory {
     /*//////////////////////////////////////////////////////////////
                          Internal Functions
     //////////////////////////////////////////////////////////////*/
+
+    /**
+     * @dev Enables or disables a backing asset.
+     * @param backingAsset The address of the asset to set.
+     * @param status `true` to support this asset, `false` to disable it.
+     */
+    function _setSupportedBackingAssetStatus(address backingAsset, bool status) internal {
+        supportedBackingAssets[backingAsset] = status;
+        emit AssetSupportedStatusUpdated(backingAsset, status);
+    }
 
     /**
      * @dev Deploys a new CirclesBacking contract using `CREATE2`.
