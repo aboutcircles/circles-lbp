@@ -7,6 +7,7 @@ import {Vm} from "forge-std/Vm.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import {CirclesBacking} from "src/CirclesBacking.sol";
+import {CirclesBackingOrder} from "src/CirclesBackingOrder.sol";
 import {CirclesBackingFactory} from "src/CirclesBackingFactory.sol";
 import {IHub} from "src/interfaces/IHub.sol";
 import {ILiftERC20} from "src/interfaces/ILiftERC20.sol";
@@ -14,7 +15,20 @@ import {INoProtocolFeeLiquidityBootstrappingPoolFactory} from "src/interfaces/IL
 import {ILBP} from "src/interfaces/ILBP.sol";
 import {IVault} from "src/interfaces/IVault.sol";
 import {IConditionalOrder} from "composable-cow/interfaces/IConditionalOrder.sol";
+import {GPv2Order} from "composable-cow/BaseConditionalOrder.sol";
+import {IValueFactory} from "composable-cow/interfaces/IValueFactory.sol";
+import {ValueFactory} from "src/ValueFactory.sol";
+import {MockERC20} from "./mock/MockERC20.sol";
+import {MockPriceFeed} from "./mock/MockPriceFeed.sol";
 
+import {IAggregatorV3Interface} from "src/interfaces/IAggregatorV3Interface.sol";
+
+// @todo order test better 
+// @todo add mock Oracle
+// @todo consered about silent slipage
+// @todo conserned about reseting order if the price changed a bit
+// @todo consern price for non existing or stale price feeds is `1`
+// @todo _calculateBuyAmount might have division by zero
 /**
  * @title CirclesBackingFactoryTest
  * @notice Foundry test suite for CirclesBackingFactory and the CirclesBacking instances.
@@ -71,6 +85,10 @@ contract CirclesBackingFactoryTest is Test {
     // The CowSwap order uid for the test instance
     bytes public uid;
 
+
+    MockERC20 mockToken;
+    MockPriceFeed mockTokenPriceFeed;
+
     // -------------------------------------------------------------------------
     // Setup
     // -------------------------------------------------------------------------
@@ -97,6 +115,9 @@ contract CirclesBackingFactoryTest is Test {
         _setMintTime(TEST_ACCOUNT_2);
         _setCRCBalance(uint256(uint160(TEST_ACCOUNT_1)), TEST_ACCOUNT_1, TODAY, uint192(CRC_AMOUNT * 2));
         _setCRCBalance(uint256(uint160(TEST_ACCOUNT_2)), TEST_ACCOUNT_2, TODAY, uint192(CRC_AMOUNT * 2));
+
+        mockToken = new MockERC20("MockToken", "MTKN", 18, 1 ether);
+        mockTokenPriceFeed = new MockPriceFeed(18, "MockTokenPrice", 1, 10);
     }
 
     // -------------------------------------------------------------------------
@@ -147,6 +168,15 @@ contract CirclesBackingFactoryTest is Test {
         // Store fillAmount in the settlement contract's slot
         vm.store(COWSWAP_SETTLEMENT, slot, bytes32(uint256(fillAmount)));
     }
+
+    // Sort tokens by address (ascending order)
+    function _sortTokens(IERC20 tokenA, IERC20 tokenB) internal pure returns (IERC20, IERC20) {
+        if (address(tokenA) < address(tokenB)) {
+            return (tokenA, tokenB);
+        }
+        return (tokenB, tokenA);
+    }
+
     function _createLBP(address predictedInstance) internal {
         CirclesBacking(predictedInstance).createLBP();
     }
@@ -166,6 +196,50 @@ contract CirclesBackingFactoryTest is Test {
         assertEq(factory.supportedBackingAssets(WXDAI), true);
     }
 
+    function test_SetSlippageBPS() public {
+        vm.prank(FACTORY_ADMIN);
+        uint256 newBPSvalue = 5000;
+        factory.setSlippageBPS(newBPSvalue);
+
+        uint256 currentValue = ValueFactory(factory.valueFactory()).slippageBPS();
+        assertEq(currentValue, newBPSvalue);
+    }
+    // @todo check naming add description
+    function test_SetSlippageBPSOutOfBoundaries() public {
+        uint256 initialValue = ValueFactory(factory.valueFactory()).slippageBPS();
+
+        vm.prank(FACTORY_ADMIN);
+        uint256 newBPSvalue = 15000;
+        factory.setSlippageBPS(newBPSvalue); // @audit repot that the function is silent 
+
+        uint256 currentValue = ValueFactory(factory.valueFactory()).slippageBPS();
+        assertNotEq(newBPSvalue, currentValue);
+        assertEq(initialValue, currentValue);
+    }
+
+    function test_RevertIf_SetSlippageBPSDirectly() public {
+        ValueFactory oracleFactoryAddress = factory.valueFactory();
+        vm.expectRevert(ValueFactory.OnlyBackingFactory.selector);
+        ValueFactory(oracleFactoryAddress).setSlippageBPS(100);
+    }
+
+    function test_SetOraclePriceFeed() public {
+        vm.prank(FACTORY_ADMIN);
+        factory.setOracle(address(mockToken), address(mockTokenPriceFeed));
+    }
+    // @todo `setOracle` price feed
+    function test_RevertIf_NotAdminSetOraclePriceFeed() public {
+        //IERC20 mockToken = IERC20(makeAddr("mockTokenAddress"));
+        //ValueFactory oracleFactoryAddress = factory.valueFactory();
+        vm.expectRevert(CirclesBackingFactory.OnlyAdmin.selector);
+        factory.setOracle(address(mockToken), address(mockTokenPriceFeed));
+    }
+    // @todo check 
+    function test_ReverIf_SetOraclePriceFeedNotByFactory() public {
+        ValueFactory oracleFactoryAddress = factory.valueFactory();
+        vm.expectRevert(ValueFactory.OnlyBackingFactory.selector);
+        oracleFactoryAddress.setOracle(address(mockToken), address(mockTokenPriceFeed));
+    }
     function test_DisableBackingAssetSupport() public {
         vm.prank(FACTORY_ADMIN);
         factory.setSupportedBackingAssetStatus(WBTC, false);
@@ -181,6 +255,8 @@ contract CirclesBackingFactoryTest is Test {
         vm.expectRevert(CirclesBackingFactory.OnlyAdmin.selector);
         factory.setReleaseTimestamp(0);
     }
+
+
 
     // -------------------------------------------------------------------------
     // Factory Hooks & Access Control
@@ -242,7 +318,6 @@ contract CirclesBackingFactoryTest is Test {
             staticInput: abi.encode("mock data")
         });
 
-
         vm.expectRevert(CirclesBacking.CallerNotFactory.selector);
         CirclesBacking(predictedInstance).initiateCowswapOrder(uint256(bytes32("mock num")), mockParams, "");
     }
@@ -257,6 +332,10 @@ contract CirclesBackingFactoryTest is Test {
         address predictedInstance = _initUserWithBackedCRC(TEST_ACCOUNT_1, WBTC);
         transferredUserCRCAmount -= HUB_V2.balanceOf(TEST_ACCOUNT_1, uint256(uint160(TEST_ACCOUNT_1)));
         
+        // @todo check the order
+        //address owner, address buyToken, uint256 buyAmount, uint32 validTo, bytes32 appData
+        //factory.getOrder()
+
         assertEq(transferredUserCRCAmount, CRC_AMOUNT);
         // Simulate the CowSwap fill
         _simulateCowSwapFill(predictedInstance, WBTC, BACKING_ASSET_DEAL_AMOUNT);
@@ -284,6 +363,205 @@ contract CirclesBackingFactoryTest is Test {
         assertEq(ILBP(lbp).getSwapFeePercentage(), SWAP_FEE);
     }
 
+    function test_OraclePrices() public {
+        // @todo finish these test
+
+        ValueFactory valueFactory = factory.valueFactory();
+
+        uint256 priceUint256 = ValueFactory(valueFactory).getValue(USDC);
+
+        bytes32 priceBytes32 = ValueFactory(valueFactory).getValue(abi.encode(USDC));
+
+        assertEq(priceUint256, uint256(priceBytes32));
+
+        // _simulateCowSwapFill(predictedInstance, WBTC, 0);
+        //ValueFactory valueFactory = factory.valueFactory();
+
+    }
+    // @todo finish this test by adding assert statement
+    function test_PriceFeedWithSmallDecimals() public {
+        uint8 DECIMALS = 1;
+        int256 TEST_PRICE = 10_000;
+        MockPriceFeed mockToken2PriceFeed = new MockPriceFeed(DECIMALS, "MockTokenPrice", 1, TEST_PRICE);
+
+        vm.prank(FACTORY_ADMIN);
+        factory.setOracle(address(mockToken), address(mockToken2PriceFeed));
+        ValueFactory valueFactory = factory.valueFactory();
+        uint256 tokenPrice = ValueFactory(valueFactory).getValue(address(mockToken));
+        //95000000  100000000000
+        
+        //
+        //console.log(tokenPrice);
+    }
+    // @todo write test for getTradable Order
+    // @todo validate price math
+    /*
+    function test_OraclePrices() public {
+        // @todo finish these test
+        int256 TEST_PRICE = 10*10**18;
+        vm.prank(FACTORY_ADMIN);
+        factory.setSupportedBackingAssetStatus(address(mockToken), true);
+        vm.prank(FACTORY_ADMIN);
+        factory.setOracle(address(mockToken), address(mockTokenPriceFeed));
+
+        mockTokenPriceFeed.updateAnswer(TEST_PRICE);
+
+
+        ValueFactory valueFactory = factory.valueFactory();
+
+        uint256 mockTokenPrice = ValueFactory(valueFactory).getValue(address(mockToken));
+        uint256 usdcTokenPrice = ValueFactory(valueFactory).getValue(USDC);
+
+        assertEq(mockTokenPrice, usdcTokenPrice);
+
+        // _simulateCowSwapFill(predictedInstance, WBTC, 0);
+        //ValueFactory valueFactory = factory.valueFactory();
+
+    }*/
+    // @todo doublecheck
+    function test_ResettingOrder() public {
+        // @todo finish these test
+        vm.prank(FACTORY_ADMIN);
+        factory.setSupportedBackingAssetStatus(address(mockToken), true);
+        vm.prank(FACTORY_ADMIN);
+        factory.setOracle(address(mockToken), address(mockTokenPriceFeed));
+
+        mockTokenPriceFeed.updateAnswer(0.5 ether);
+        // Setup user with CRC and backing
+        uint256 transferredUserCRCAmount = HUB_V2.balanceOf(TEST_ACCOUNT_1, uint256(uint160(TEST_ACCOUNT_1)));
+        address predictedInstance = _initUserWithBackedCRC(TEST_ACCOUNT_1, address(mockToken));
+        transferredUserCRCAmount -= HUB_V2.balanceOf(TEST_ACCOUNT_1, uint256(uint160(TEST_ACCOUNT_1)));
+
+        assertEq(transferredUserCRCAmount, CRC_AMOUNT);
+
+        // _simulateCowSwapFill(predictedInstance, WBTC, 0);
+        ValueFactory valueFactory = factory.valueFactory();
+        ValueFactory(valueFactory).getValue(WBTC);
+        skip(24.1 hours);
+       
+
+        //vm.expectRevert(CirclesBacking.OrderAlreadySettled.selector);
+        CirclesBacking(predictedInstance).resetCowswapOrder();
+    }
+    // @todo new test, check the naming
+    function test_RevertIf_ResettingSettledOrder() public {
+        // Setup user with CRC and backing
+        uint256 transferredUserCRCAmount = HUB_V2.balanceOf(TEST_ACCOUNT_1, uint256(uint160(TEST_ACCOUNT_1)));
+        address predictedInstance = _initUserWithBackedCRC(TEST_ACCOUNT_1, WBTC);
+        transferredUserCRCAmount -= HUB_V2.balanceOf(TEST_ACCOUNT_1, uint256(uint160(TEST_ACCOUNT_1)));
+
+        assertEq(transferredUserCRCAmount, CRC_AMOUNT);
+
+        _simulateCowSwapFill(predictedInstance, WBTC, BACKING_ASSET_DEAL_AMOUNT);
+
+        vm.expectRevert(CirclesBacking.OrderAlreadySettled.selector);
+        CirclesBacking(predictedInstance).resetCowswapOrder();
+    }
+
+    function test_RevertIf_ResettingOrderUidIsTheSame() public {
+        // Setup user with CRC and backing
+        uint256 transferredUserCRCAmount = HUB_V2.balanceOf(TEST_ACCOUNT_1, uint256(uint160(TEST_ACCOUNT_1)));
+        address predictedInstance = _initUserWithBackedCRC(TEST_ACCOUNT_1, WBTC);
+        transferredUserCRCAmount -= HUB_V2.balanceOf(TEST_ACCOUNT_1, uint256(uint160(TEST_ACCOUNT_1)));
+
+        assertEq(transferredUserCRCAmount, CRC_AMOUNT);
+
+        //_simulateCowSwapFill(predictedInstance, WBTC, BACKING_ASSET_DEAL_AMOUNT);
+
+        vm.expectRevert(CirclesBacking.OrderUidIsTheSame.selector);
+        CirclesBacking(predictedInstance).resetCowswapOrder();
+    }
+    // @todo update naming
+    function test_OracleTest() public {
+        
+        CirclesBackingOrder circlesBackingOrder = factory.circlesBackingOrder();
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IConditionalOrder.OrderNotValid.selector,
+                "balance insufficient"
+            )
+        );
+        // @todo verify that the balance is zero
+        CirclesBackingOrder(circlesBackingOrder).getTradeableOrder(
+            TEST_ACCOUNT_1,address(0x0),bytes32(""),bytes(""),bytes("")
+        );
+
+        //getTradeableOrder
+        //address owner, address buyToken, uint256 buyAmount, uint32 validTo, bytes32 appData
+    }
+    // @todo update naming
+    
+    function test_RemovePriceFeed() public {
+        ValueFactory valueFactory = factory.valueFactory();
+
+        vm.prank(FACTORY_ADMIN);
+        factory.setOracle(address(mockToken), address(mockTokenPriceFeed));
+
+
+        (IAggregatorV3Interface priceFeedAddress, uint8 feedDecimals, uint8 tokenDecimals) = valueFactory.oracles(address(mockToken));
+        // Price feed was added correctly
+        assertEq(address(priceFeedAddress), address(mockTokenPriceFeed));
+        assertEq(feedDecimals, mockTokenPriceFeed.decimals());
+        assertEq(tokenDecimals, mockToken.decimals());
+
+        // @todo check if price feed exists
+        vm.prank(FACTORY_ADMIN);
+        factory.setOracle(address(mockToken), address(0));
+        (priceFeedAddress, feedDecimals, tokenDecimals) = valueFactory.oracles(address(mockToken));
+        assertEq(address(priceFeedAddress), address(0));
+        assertEq(feedDecimals, 0);
+        assertEq(tokenDecimals, 0);
+    }
+
+    function test_OracleUnsupportedAsset() public {
+        // @todo verify that the balance is zero
+        deal(USDC, TEST_ACCOUNT_1, USDC_START_AMOUNT);
+
+        CirclesBackingOrder.OrderStaticInput memory staticInput = CirclesBackingOrder.OrderStaticInput(
+            USDC,
+            1000,
+            uint32(block.timestamp - 100),
+            bytes32("")
+        );
+
+        CirclesBackingOrder circlesBackingOrder = factory.circlesBackingOrder();
+        vm.expectRevert();// @todo add exact error
+
+        GPv2Order.Data memory order = CirclesBackingOrder(circlesBackingOrder).getTradeableOrder(
+            TEST_ACCOUNT_1, address(0x0), bytes32(""), abi.encode(staticInput),bytes("")
+        );
+
+        //getTradeableOrder
+        //address owner, address buyToken, uint256 buyAmount, uint32 validTo, bytes32 appData
+    }
+
+    function test_OracleOrderExpired() public {
+        // @todo verify that the balance is zero
+        deal(USDC, TEST_ACCOUNT_1, USDC_START_AMOUNT);
+
+        CirclesBackingOrder.OrderStaticInput memory staticInput = CirclesBackingOrder.OrderStaticInput(
+            WETH,
+            10000,
+            uint32(block.timestamp - 100),
+            bytes32("")
+        );
+
+        CirclesBackingOrder circlesBackingOrder = factory.circlesBackingOrder();
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IConditionalOrder.OrderNotValid.selector,
+                "order expired"
+            )
+        );
+
+        CirclesBackingOrder(circlesBackingOrder).getTradeableOrder(
+            TEST_ACCOUNT_1,address(0x0),bytes32(""), abi.encode(staticInput),bytes("")
+        );
+        //getTradeableOrder
+        //address owner, address buyToken, uint256 buyAmount, uint32 validTo, bytes32 appData
+    }
+
     function test_RevertIf_CreatesLBPWithDifferentBackingAsset() public {
         // Setup user with CRC and backing
         _initUserWithBackedCRC(TEST_ACCOUNT_1, GNO);
@@ -309,8 +587,10 @@ contract CirclesBackingFactoryTest is Test {
         address lbp = CirclesBacking(predictedInstance).lbp();
         bytes32 poolId = ILBP(lbp).getPoolId();
         IERC20[] memory tokens = new IERC20[](2);
-        tokens[0] = IERC20(CirclesBacking(predictedInstance).STABLE_CRC());
-        tokens[1] = IERC20(GNO);
+        (tokens[0], tokens[1]) = _sortTokens(
+            IERC20(CirclesBacking(predictedInstance).STABLE_CRC()),
+            IERC20(GNO)
+        );
 
         uint256[] memory amountsIn = new uint256[](2);
         amountsIn[0] = backingAssetDealAmount;
