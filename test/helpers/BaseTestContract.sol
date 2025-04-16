@@ -26,7 +26,7 @@ contract BaseTestContract is Test {
     uint256 public constant YEAR = 365 days;
     uint256 public constant MAX_DELTA = 3e10;
     uint256 public constant SWAP_FEE = 0.03 ether;
-    int256  public constant INITIAL_FEED_PRICE = 10 ether;
+    int256 public constant INITIAL_FEED_PRICE = 10 ether;
 
     // Storage slots
     uint256 public constant ORDER_FILLED_SLOT = 2;
