@@ -40,16 +40,11 @@ contract MockPriceFeed is IAggregatorV3Interface {
      * @param __version The version of the aggregator
      * @param __initialAnswer The initial price value to set
      */
-    constructor(
-        uint8 __decimals,
-        string memory __description,
-        uint256 __version,
-        int256 __initialAnswer
-    ) {
+    constructor(uint8 __decimals, string memory __description, uint256 __version, int256 __initialAnswer) {
         _decimals = __decimals;
         _description = __description;
         _version = __version;
-        
+
         // Initialize first round
         _latestRoundId = 1;
         _latestAnswer = __initialAnswer;
@@ -107,24 +102,12 @@ contract MockPriceFeed is IAggregatorV3Interface {
         external
         view
         override
-        returns (
-            uint80 roundId,
-            int256 answer,
-            uint256 startedAt,
-            uint256 updatedAt,
-            uint80 answeredInRound
-        )
+        returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)
     {
         require(_roundData[_roundId].exists, "Round not found");
-        
+
         RoundData memory data = _roundData[_roundId];
-        return (
-            _roundId,
-            data.answer,
-            data.startedAt,
-            data.updatedAt,
-            data.answeredInRound
-        );
+        return (_roundId, data.answer, data.startedAt, data.updatedAt, data.answeredInRound);
     }
 
     /**
@@ -139,21 +122,9 @@ contract MockPriceFeed is IAggregatorV3Interface {
         external
         view
         override
-        returns (
-            uint80 roundId,
-            int256 answer,
-            uint256 startedAt,
-            uint256 updatedAt,
-            uint80 answeredInRound
-        )
+        returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)
     {
-        return (
-            _latestRoundId,
-            _latestAnswer,
-            _latestStartedAt,
-            _latestUpdatedAt,
-            _latestAnsweredInRound
-        );
+        return (_latestRoundId, _latestAnswer, _latestStartedAt, _latestUpdatedAt, _latestAnsweredInRound);
     }
 
     /**
@@ -162,7 +133,7 @@ contract MockPriceFeed is IAggregatorV3Interface {
      */
     function updateAnswer(int256 _answer) external {
         uint80 newRoundId = _latestRoundId + 1;
-        
+
         _latestRoundId = newRoundId;
         _latestAnswer = _answer;
         _latestStartedAt = block.timestamp;

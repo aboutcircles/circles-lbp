@@ -23,13 +23,6 @@ import {MockPriceFeed} from "./mock/MockPriceFeed.sol";
 
 import {IAggregatorV3Interface} from "src/interfaces/IAggregatorV3Interface.sol";
 
-// @todo order test better 
-// @todo add mock Oracle
-// @todo consered about silent slipage
-// @todo conserned about reseting order if the price changed a bit
-// @todo consern price for non existing or stale price feeds is `1`
-// @todo _calculateBuyAmount might have division by zero
-// @todo add tests description
 /**
  * @title CirclesBackingFactoryTest
  * @notice Foundry test suite for CirclesBackingFactory and the CirclesBacking instances.
@@ -45,7 +38,6 @@ contract CirclesBackingFactoryTest is Test {
     uint256 internal constant YEAR = 365 days;
     uint256 internal constant MAX_DELTA = 3e10;
     uint256 internal constant SWAP_FEE = 0.03 ether;
-
 
     // Use keccak256(abi.encodePacked(uid, ORDER_FILLED_SLOT)) for the settlement storage
     uint256 internal constant ORDER_FILLED_SLOT = 2;
@@ -86,7 +78,6 @@ contract CirclesBackingFactoryTest is Test {
     // The CowSwap order uid for the test instance
     bytes public uid;
 
-
     MockERC20 mockToken;
     MockPriceFeed mockTokenPriceFeed;
 
@@ -96,7 +87,6 @@ contract CirclesBackingFactoryTest is Test {
 
     function setUp() public {
         // Fork from Gnosis
-        // @todo fork from the last
         gnosisFork = vm.createFork(vm.envString("GNOSIS_RPC"));
         vm.selectFork(gnosisFork);
         vm.deal(FACTORY_ADMIN, 1 ether);
@@ -206,12 +196,13 @@ contract CirclesBackingFactoryTest is Test {
         assertEq(currentValue, newBPSvalue);
     }
     // @todo check naming add description
+
     function test_SetSlippageBPSOutOfBoundaries() public {
         uint256 initialValue = ValueFactory(factory.valueFactory()).slippageBPS();
 
         vm.prank(FACTORY_ADMIN);
         uint256 newBPSvalue = 15000;
-        factory.setSlippageBPS(newBPSvalue); // @audit repot that the function is silent 
+        factory.setSlippageBPS(newBPSvalue); // @audit repot that the function is silent
 
         uint256 currentValue = ValueFactory(factory.valueFactory()).slippageBPS();
         assertNotEq(newBPSvalue, currentValue);
@@ -229,18 +220,21 @@ contract CirclesBackingFactoryTest is Test {
         factory.setOracle(address(mockToken), address(mockTokenPriceFeed));
     }
     // @todo `setOracle` price feed
+
     function test_RevertIf_NotAdminSetOraclePriceFeed() public {
         //IERC20 mockToken = IERC20(makeAddr("mockTokenAddress"));
         //ValueFactory oracleFactoryAddress = factory.valueFactory();
         vm.expectRevert(CirclesBackingFactory.OnlyAdmin.selector);
         factory.setOracle(address(mockToken), address(mockTokenPriceFeed));
     }
-    // @todo check 
+    // @todo check
+
     function test_ReverIf_SetOraclePriceFeedNotByFactory() public {
         ValueFactory oracleFactoryAddress = factory.valueFactory();
         vm.expectRevert(ValueFactory.OnlyBackingFactory.selector);
         oracleFactoryAddress.setOracle(address(mockToken), address(mockTokenPriceFeed));
     }
+
     function test_DisableBackingAssetSupport() public {
         vm.prank(FACTORY_ADMIN);
         factory.setSupportedBackingAssetStatus(WBTC, false);
@@ -256,8 +250,6 @@ contract CirclesBackingFactoryTest is Test {
         vm.expectRevert(CirclesBackingFactory.OnlyAdmin.selector);
         factory.setReleaseTimestamp(0);
     }
-
-
 
     // -------------------------------------------------------------------------
     // Factory Hooks & Access Control
@@ -332,7 +324,7 @@ contract CirclesBackingFactoryTest is Test {
         uint256 transferredUserCRCAmount = HUB_V2.balanceOf(TEST_ACCOUNT_1, uint256(uint160(TEST_ACCOUNT_1)));
         address predictedInstance = _initUserWithBackedCRC(TEST_ACCOUNT_1, WBTC);
         transferredUserCRCAmount -= HUB_V2.balanceOf(TEST_ACCOUNT_1, uint256(uint160(TEST_ACCOUNT_1)));
-        
+
         // @todo check the order
         //address owner, address buyToken, uint256 buyAmount, uint32 validTo, bytes32 appData
         //factory.getOrder()
@@ -389,10 +381,7 @@ contract CirclesBackingFactoryTest is Test {
         address lbp = CirclesBacking(predictedInstance).lbp();
         bytes32 poolId = ILBP(lbp).getPoolId();
         IERC20[] memory tokens = new IERC20[](2);
-        (tokens[0], tokens[1]) = _sortTokens(
-            IERC20(CirclesBacking(predictedInstance).STABLE_CRC()),
-            IERC20(GNO)
-        );
+        (tokens[0], tokens[1]) = _sortTokens(IERC20(CirclesBacking(predictedInstance).STABLE_CRC()), IERC20(GNO));
 
         uint256[] memory amountsIn = new uint256[](2);
         amountsIn[0] = backingAssetDealAmount;
@@ -411,7 +400,7 @@ contract CirclesBackingFactoryTest is Test {
 
     function test_RevertIf_LBPIsAlreadyCreated() public {
         address predictedInstance = _initUserWithBackedCRC(TEST_ACCOUNT_1, sDAI);
-        
+
         uint256 backingAssetDealAmount = CirclesBacking(predictedInstance).buyAmount();
         _simulateCowSwapFill(predictedInstance, sDAI, backingAssetDealAmount);
 
@@ -424,7 +413,7 @@ contract CirclesBackingFactoryTest is Test {
         vm.expectRevert(CirclesBacking.LBPAlreadyCreated.selector);
         _createLBP(predictedInstance);
     }
-    
+
     function test_RevertIf_InsufficientBackingAssetOnOrderContract() public {
         address predictedInstance = _initUserWithBackedCRC(TEST_ACCOUNT_1, WETH);
         CirclesBacking circlesBackingInstance = CirclesBacking(predictedInstance);
@@ -440,11 +429,7 @@ contract CirclesBackingFactoryTest is Test {
         assertEq(IERC20(circlesBackingInstance.BACKING_ASSET()).balanceOf(address(circlesBackingInstance)), 0);
         // Attempt to create LBP => revert
         vm.expectRevert(
-            abi.encodeWithSelector(
-                CirclesBacking.BackingAssetBalanceInsufficient.selector,
-                0,
-                backingAssetDealAmount
-            )
+            abi.encodeWithSelector(CirclesBacking.BackingAssetBalanceInsufficient.selector, 0, backingAssetDealAmount)
         );
         _createLBP(predictedInstance);
     }
@@ -665,11 +650,11 @@ contract CirclesBackingFactoryTest is Test {
         assertApproxEqAbs(tokens[1].balanceOf(TEST_ACCOUNT_1), balances[1], MAX_DELTA);
     }
 
-        // -------------------------------------------------------------------------
+    // -------------------------------------------------------------------------
     // Oracles settings
     // -------------------------------------------------------------------------
 
-    function test_GetOraclePrices() public {
+    function test_GetOraclePrices() public view {
         ValueFactory valueFactory = factory.valueFactory();
         uint256 priceUint256 = ValueFactory(valueFactory).getValue(USDC);
         bytes32 priceBytes32 = ValueFactory(valueFactory).getValue(abi.encode(USDC));
@@ -678,14 +663,14 @@ contract CirclesBackingFactoryTest is Test {
 
     function test_OraclePricesForTokenWithFewDecimals() public {
         uint8 DECIMALS = 1;
-        int256 TEST_PRICE = 10_000;  // $1000.0 with 1 decimal
+        int256 TEST_PRICE = 10_000; // $1000.0 with 1 decimal
         mockTokenPriceFeed = new MockPriceFeed(DECIMALS, "MockTokenPrice", 1, TEST_PRICE);
 
         vm.prank(FACTORY_ADMIN);
         factory.setOracle(address(mockToken), address(mockTokenPriceFeed));
         ValueFactory valueFactory = factory.valueFactory();
         uint256 tokenAmount = valueFactory.getValue(address(mockToken));
-        
+
         // Verify we get a positive amount with valid price
         assertGt(tokenAmount, 1, "Token amount should be positive with valid price");
     }
@@ -693,19 +678,19 @@ contract CirclesBackingFactoryTest is Test {
     function test_OraclePriceUpdateAffectsTokenAmount() public {
         // Setup
         uint8 DECIMALS = 1;
-        int256 INITIAL_PRICE = 10_000;  // $1000.0 with 1 decimal
+        int256 INITIAL_PRICE = 10_000; // $1000.0 with 1 decimal
         mockTokenPriceFeed = new MockPriceFeed(DECIMALS, "MockTokenPrice", 1, INITIAL_PRICE);
 
         vm.prank(FACTORY_ADMIN);
         factory.setOracle(address(mockToken), address(mockTokenPriceFeed));
         ValueFactory valueFactory = factory.valueFactory();
         uint256 initialAmount = valueFactory.getValue(address(mockToken));
-        
+
         // Test price update - higher price should result in lower token amount
-        int256 DOUBLED_PRICE = 20_000;  // $2000.0 with 1 decimal
+        int256 DOUBLED_PRICE = 20_000; // $2000.0 with 1 decimal
         mockTokenPriceFeed.updateAnswer(DOUBLED_PRICE);
         uint256 newAmount = valueFactory.getValue(address(mockToken));
-        
+
         assertLt(newAmount, initialAmount, "Higher price should result in lower token amount");
         // It should be roughly half the amount since we doubled the price
         assertApproxEqRel(newAmount, initialAmount / 2, 0.01e18, "Amount should be approximately halved");
@@ -720,7 +705,7 @@ contract CirclesBackingFactoryTest is Test {
         vm.prank(FACTORY_ADMIN);
         factory.setOracle(address(mockToken), address(mockTokenPriceFeed));
         ValueFactory valueFactory = factory.valueFactory();
-        
+
         mockTokenPriceFeed.updateAnswer(TEST_PRICE);
         // Test with stale price data (more than 1 day old)
         uint256 staleTimestamp = block.timestamp + 2 days;
@@ -730,7 +715,7 @@ contract CirclesBackingFactoryTest is Test {
         assertEq(staleAmount, 1, "Stale price data should return minimal amount of 1");
     }
 
-    function test_ZeroPriceHandling() public {
+    function test_OracleZeroPriceHandling() public {
         // Setup
         uint8 DECIMALS = 1;
         int256 TEST_PRICE = 10_000;
@@ -739,60 +724,60 @@ contract CirclesBackingFactoryTest is Test {
         vm.prank(FACTORY_ADMIN);
         factory.setOracle(address(mockToken), address(mockTokenPriceFeed));
         ValueFactory valueFactory = factory.valueFactory();
-        
+
         // First check with valid price
         uint256 validAmount = valueFactory.getValue(address(mockToken));
         assertGt(validAmount, 1, "Valid price should return more than minimal amount");
-        
+
         // Test with zero price
         mockTokenPriceFeed.updateAnswer(0);
         uint256 zeroAmount = valueFactory.getValue(address(mockToken));
         assertEq(zeroAmount, 1, "Zero price should return minimal amount of 1");
     }
 
-    function testFuzz_SlippageImpactAcrossDecimalRanges(uint8 fuzzedDecimals) public {
+    function testFuzz_OracleSlippageImpactAcrossDecimalRanges(uint8 fuzzedDecimals) public {
         // Constrain decimals to a realistic range (1-20)
         uint8 oracleDecimals = uint8(bound(fuzzedDecimals, 1, 20));
 
         // Setup with a token that has few decimals
-        int256 TEST_PRICE = 1_000*int256(10**oracleDecimals);
+        int256 TEST_PRICE = 1_000 * int256(10 ** oracleDecimals);
         mockTokenPriceFeed = new MockPriceFeed(oracleDecimals, "MockTokenPrice", 1, TEST_PRICE);
 
         // Constants from the ValueFactory contract
-        uint256 MAX_BPS = 10000;  // 100% in basis points (from ValueFactory contract)
-        uint256 DEFAULT_SLIPPAGE_BPS = 500;  // Default 5% slippage
+        uint256 MAX_BPS = 10000; // 100% in basis points (from ValueFactory contract)
+        uint256 DEFAULT_SLIPPAGE_BPS = 500; // Default 5% slippage
 
         vm.prank(FACTORY_ADMIN);
         factory.setOracle(address(mockToken), address(mockTokenPriceFeed));
         ValueFactory valueFactory = factory.valueFactory();
-        
+
         // Verify the default slippage matches what we expect
         assertEq(valueFactory.slippageBPS(), DEFAULT_SLIPPAGE_BPS, "Initial slippage should be 500 BPS (5%)");
-        
+
         // Get token amount with default slippage
         uint256 defaultSlippageAmount = valueFactory.getValue(address(mockToken));
-        
+
         // Change slippage to 10%
-        uint256 NEW_SLIPPAGE_BPS = 1000;  // 10% slippage
+        uint256 NEW_SLIPPAGE_BPS = 1000; // 10% slippage
         vm.prank(FACTORY_ADMIN);
         factory.setSlippageBPS(NEW_SLIPPAGE_BPS);
-        
+
         // Verify slippage was updated correctly
         assertEq(valueFactory.slippageBPS(), NEW_SLIPPAGE_BPS, "Slippage should be updated to 1000 BPS (10%)");
-        
+
         // Get token amount with increased slippage
         uint256 higherSlippageAmount = valueFactory.getValue(address(mockToken));
-        
+
         // Basic check: higher slippage should result in lower token amount
         assertLt(higherSlippageAmount, defaultSlippageAmount, "Higher slippage should result in lower buy amount");
-        
+
         // Calculate the expected ratio between amounts with different slippages
         // From the ValueFactory contract:
         //   buyAmount = (buyAmount * (MAX_BPS - slippageBPS)) / MAX_BPS;
         //
         // With default 5% slippage: effective multiplier = (10000 - 500)/10000 = 0.95
         // With new 10% slippage: effective multiplier = (10000 - 1000)/10000 = 0.90
-        // 
+        //
         // Expected ratio = 0.90 / 0.95 = 0.947... (approximately 94.7%)
         // In basis points: (9000 * 10000) / 9500 = 9474 BPS
         uint256 expectedRatio = (MAX_BPS - NEW_SLIPPAGE_BPS) * MAX_BPS / (MAX_BPS - DEFAULT_SLIPPAGE_BPS);
@@ -806,17 +791,12 @@ contract CirclesBackingFactoryTest is Test {
     function test_RevertIf_OraclePriceIsVeryLow() public {
         // Setup a token with high decimals (greater than 8)
         uint8 ORACLE_DECIMALS = 9;
-        
+
         // Create a price feed with an extremely low price - just 1 unit
         // This is equivalent to $0.00000001 for an 8-decimal oracle
         int256 EXTREMELY_LOW_PRICE = 1;
-        
-        mockTokenPriceFeed = new MockPriceFeed(
-            ORACLE_DECIMALS,
-            "LowPriceFeed",
-            1,
-            EXTREMELY_LOW_PRICE
-        );
+
+        mockTokenPriceFeed = new MockPriceFeed(ORACLE_DECIMALS, "LowPriceFeed", 1, EXTREMELY_LOW_PRICE);
 
         // Set the oracles
         vm.startPrank(FACTORY_ADMIN);
@@ -824,23 +804,22 @@ contract CirclesBackingFactoryTest is Test {
         factory.setOracle(address(mockToken), address(mockTokenPriceFeed));
 
         ValueFactory valueFactory = factory.valueFactory();
-        
-        // Issue: When a token has an extremely low price and high decimals, the `_scalePrice` 
+
+        // Issue: When a token has an extremely low price and high decimals, the `_scalePrice`
         // function can scale the price down to zero due to integer division in Solidity.
-        // 
+        //
         // Since the contract only checks for zero prices BEFORE scaling (not after), this creates
         // a division by zero error in the calculation:
         // `buyAmount = (buyUnit * basePrice * SELL_AMOUNT) / (quotePrice * SELL_UNIT)`
 
         // Specifically:
-        // 1. A token with 9 decimals having a price of 1 (0.000000001) 
+        // 1. A token with 9 decimals having a price of 1 (0.000000001)
         // 2. When scaled from 9 to 8 decimals: 1 / 10 = 0 (in integer math)
         // 3. This leads to division by zero when calculating the buy amount
 
         // Proposed fix: Add a safety check for zero AFTER scaling the prices:
         //  - After `quotePrice = _scalePrice(quotePrice, buyOracle.feedDecimals, 8);`
         //  - Add: `if (quotePrice == 0) { buyAmount = 1; } else { ... }`
-
 
         // Check if the function reverts due to division by zero
         vm.expectRevert(abi.encodeWithSignature("Panic(uint256)", 0x12));
@@ -850,24 +829,19 @@ contract CirclesBackingFactoryTest is Test {
         // assertEq(amount, 1, "Low price should return minimal amount of 1");
     }
 
-    // @todo write test to get division by zero if input amount is tiny
-    
-    // @todo write test for getTradable Order
-
-    function test_RemovePriceFeed() public {
+    function test_OracleRemovePriceFeed() public {
         ValueFactory valueFactory = factory.valueFactory();
 
         vm.prank(FACTORY_ADMIN);
         factory.setOracle(address(mockToken), address(mockTokenPriceFeed));
 
-
-        (IAggregatorV3Interface priceFeedAddress, uint8 feedDecimals, uint8 tokenDecimals) = valueFactory.oracles(address(mockToken));
+        (IAggregatorV3Interface priceFeedAddress, uint8 feedDecimals, uint8 tokenDecimals) =
+            valueFactory.oracles(address(mockToken));
         // Price feed was added correctly
         assertEq(address(priceFeedAddress), address(mockTokenPriceFeed));
         assertEq(feedDecimals, mockTokenPriceFeed.decimals());
         assertEq(tokenDecimals, mockToken.decimals());
 
-        // @todo check if price feed exists
         vm.prank(FACTORY_ADMIN);
         factory.setOracle(address(mockToken), address(0));
         (priceFeedAddress, feedDecimals, tokenDecimals) = valueFactory.oracles(address(mockToken));
@@ -880,7 +854,6 @@ contract CirclesBackingFactoryTest is Test {
     // CowSwap Orders Logic & Validation
     // -------------------------------------------------------------------------
 
-    // @todo doublecheck
     function test_ResetCowswapOrder() public {
         // Setup Oracle for custom mock token
         vm.prank(FACTORY_ADMIN);
@@ -898,6 +871,89 @@ contract CirclesBackingFactoryTest is Test {
         // Oracle price changed after initial order creation which allows resseting the order
         mockTokenPriceFeed.updateAnswer(0.1 ether);
         CirclesBacking(predictedInstance).resetCowswapOrder();
+    }
+
+    function test_FactoryGetOrderFunction() public view {
+        // Parameters for testing
+        address owner = TEST_ACCOUNT_1;
+        address buyToken = WETH;
+        uint256 buyAmount = 1 ether;
+        uint32 validTo = uint32(block.timestamp + 1 days);
+        bytes32 appData = bytes32("test app data");
+
+        // Get the order
+        GPv2Order.Data memory orderData = factory.getOrder(owner, buyToken, buyAmount, validTo, appData);
+
+        // Verify all fields of the returned order
+        assertEq(address(orderData.sellToken), USDC);
+        assertEq(address(orderData.buyToken), WETH);
+        assertEq(orderData.receiver, owner);
+        assertEq(orderData.sellAmount, factory.TRADE_AMOUNT());
+        assertEq(orderData.buyAmount, buyAmount);
+        assertEq(orderData.validTo, validTo);
+        assertEq(orderData.appData, appData);
+        assertEq(orderData.feeAmount, 0);
+        assertEq(orderData.kind, GPv2Order.KIND_SELL);
+        assertFalse(orderData.partiallyFillable);
+        assertEq(orderData.sellTokenBalance, GPv2Order.BALANCE_ERC20);
+        assertEq(orderData.buyTokenBalance, GPv2Order.BALANCE_ERC20);
+    }
+
+    function test_GetConditionalParamsAndOrderUid() public view {
+        // Parameters for testing
+        address owner = TEST_ACCOUNT_1;
+        address backingAsset = WETH;
+        uint32 orderDeadline = uint32(block.timestamp + 1 days);
+        (, bytes32 appData) = factory.getAppData(owner);
+        uint256 nonce = 123;
+
+        // Get parameters and order UID
+        (uint256 buyAmount, IConditionalOrder.ConditionalOrderParams memory params, bytes memory orderUid) =
+            factory.getConditionalParamsAndOrderUid(owner, backingAsset, orderDeadline, appData, nonce);
+
+        // Verify buyAmount is calculated correctly via valueFactory
+        assertEq(buyAmount, factory.valueFactory().getValue(backingAsset));
+
+        // Verify params
+        assertEq(address(params.handler), address(factory.circlesBackingOrder()));
+        assertEq(params.salt, keccak256(abi.encode(owner, nonce)));
+
+        // Decode static input from params
+        CirclesBackingOrder.OrderStaticInput memory staticInput =
+            abi.decode(params.staticInput, (CirclesBackingOrder.OrderStaticInput));
+
+        // Verify static input
+        assertEq(staticInput.buyToken, backingAsset);
+        assertEq(staticInput.buyAmount, buyAmount);
+        assertEq(staticInput.validTo, orderDeadline);
+        assertEq(staticInput.appData, appData);
+
+        // Verify orderUid structure
+        GPv2Order.Data memory order = factory.getOrder(owner, backingAsset, buyAmount, orderDeadline, appData);
+        bytes32 digest = GPv2Order.hash(order, factory.DOMAIN_SEPARATOR());
+        bytes memory expectedOrderUid = abi.encodePacked(digest, owner, orderDeadline);
+        assertEq(orderUid, expectedOrderUid);
+    }
+
+    function test_GetTradeableOrderWithValidInput() public {
+        // Setup to avoid 'balance insufficient' error
+        deal(USDC, TEST_ACCOUNT_1, factory.TRADE_AMOUNT());
+
+        CirclesBackingOrder order = factory.circlesBackingOrder();
+
+        // Prepare valid static input
+        uint32 validTo = uint32(block.timestamp + 1 days);
+        CirclesBackingOrder.OrderStaticInput memory staticInput =
+            CirclesBackingOrder.OrderStaticInput(WETH, 1 ether, validTo, bytes32("test app data"));
+
+        // Should not revert with valid parameters
+        GPv2Order.Data memory orderData =
+            order.getTradeableOrder(TEST_ACCOUNT_1, address(0), bytes32(""), abi.encode(staticInput), bytes(""));
+
+        // Verify results
+        assertEq(address(orderData.buyToken), WETH);
+        assertEq(orderData.buyAmount, 1 ether);
+        assertEq(orderData.validTo, validTo);
     }
 
     function test_RevertIf_ResettingSettledOrder() public {
@@ -926,67 +982,80 @@ contract CirclesBackingFactoryTest is Test {
         CirclesBacking(predictedInstance).resetCowswapOrder();
     }
     // @todo update naming
+
     function test_RevertIf_CreatingOrderWithInsufficientBalance() public {
-        
+        // Setup
         CirclesBackingOrder circlesBackingOrder = factory.circlesBackingOrder();
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IConditionalOrder.OrderNotValid.selector,
-                "balance insufficient"
-            )
+
+        // Explicitly verify the balance is zero before test
+        assertEq(IERC20(USDC).balanceOf(TEST_ACCOUNT_1), 0, "Balance should be zero for this test");
+
+        CirclesBackingOrder.OrderStaticInput memory staticInput =
+            CirclesBackingOrder.OrderStaticInput(WETH, 1 ether, uint32(block.timestamp + 100), bytes32(""));
+
+        // Expect revert due to insufficient balance
+        vm.expectRevert(abi.encodeWithSelector(IConditionalOrder.OrderNotValid.selector, "balance insufficient"));
+
+        circlesBackingOrder.getTradeableOrder(
+            TEST_ACCOUNT_1, address(0x0), bytes32(""), abi.encode(staticInput), bytes("")
         );
-        // @todo verify that the balance is zero
-        CirclesBackingOrder(circlesBackingOrder).getTradeableOrder(
-            TEST_ACCOUNT_1, address(0x0), bytes32(""), bytes(""), bytes("")
+
+        // Test with almost enough balance but still insufficient
+        uint256 almostEnough = factory.TRADE_AMOUNT() - 1;
+        deal(USDC, TEST_ACCOUNT_1, almostEnough);
+
+        assertEq(IERC20(USDC).balanceOf(TEST_ACCOUNT_1), almostEnough, "Balance should be almost enough");
+
+        vm.expectRevert(abi.encodeWithSelector(IConditionalOrder.OrderNotValid.selector, "balance insufficient"));
+
+        circlesBackingOrder.getTradeableOrder(
+            TEST_ACCOUNT_1, address(0x0), bytes32(""), abi.encode(staticInput), bytes("")
+        );
+
+        // Test with sufficient balance
+        deal(USDC, TEST_ACCOUNT_1, factory.TRADE_AMOUNT());
+
+        assertGe(IERC20(USDC).balanceOf(TEST_ACCOUNT_1), factory.TRADE_AMOUNT(), "Balance should be enough");
+
+        circlesBackingOrder.getTradeableOrder(
+            TEST_ACCOUNT_1, address(0x0), bytes32(""), abi.encode(staticInput), bytes("")
         );
     }
 
     function test_RevertIf_CreatingOrderWithUnsupportedAsset() public {
-        // @todo verify that the balance is zero
-        deal(USDC, TEST_ACCOUNT_1, USDC_START_AMOUNT);
+        // Setup
+        address randomAsset = makeAddr("randomUnsupportedAsset");
 
-        CirclesBackingOrder.OrderStaticInput memory staticInput = CirclesBackingOrder.OrderStaticInput(
-            USDC,
-            1000,
-            uint32(block.timestamp - 100),
-            bytes32("")
-        );
+        // Explicitly verify the asset is not supported before test
+        assertFalse(factory.supportedBackingAssets(randomAsset), "Asset should not be supported for this test");
+
+        // Ensure account has sufficient balance of the sell token
+        deal(USDC, TEST_ACCOUNT_1, 1 ether);
+
+        CirclesBackingOrder.OrderStaticInput memory staticInput =
+            CirclesBackingOrder.OrderStaticInput(randomAsset, 1000, uint32(block.timestamp), bytes32(""));
 
         CirclesBackingOrder circlesBackingOrder = factory.circlesBackingOrder();
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IConditionalOrder.OrderNotValid.selector,
-                "asset unsupported"
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(IConditionalOrder.OrderNotValid.selector, "asset unsupported"));
 
         CirclesBackingOrder(circlesBackingOrder).getTradeableOrder(
-            TEST_ACCOUNT_1, address(0x0), bytes32(""), abi.encode(staticInput),bytes("")
+            TEST_ACCOUNT_1, address(0x0), bytes32(""), abi.encode(staticInput), bytes("")
         );
     }
 
     function test_RevertIf_OrderExpired() public {
-        // @todo verify that the balance is zero
         deal(USDC, TEST_ACCOUNT_1, USDC_START_AMOUNT);
 
-        CirclesBackingOrder.OrderStaticInput memory staticInput = CirclesBackingOrder.OrderStaticInput(
-            WETH,
-            10000,
-            uint32(block.timestamp - 100),
-            bytes32("")
-        );
+        // Just expired (1 second ago)
+        CirclesBackingOrder.OrderStaticInput memory staticInput =
+            CirclesBackingOrder.OrderStaticInput(WETH, 10000, uint32(block.timestamp - 1), bytes32(""));
 
         CirclesBackingOrder circlesBackingOrder = factory.circlesBackingOrder();
 
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IConditionalOrder.OrderNotValid.selector,
-                "order expired"
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(IConditionalOrder.OrderNotValid.selector, "order expired"));
 
         CirclesBackingOrder(circlesBackingOrder).getTradeableOrder(
-            TEST_ACCOUNT_1,address(0x0),bytes32(""), abi.encode(staticInput),bytes("")
+            TEST_ACCOUNT_1, address(0x0), bytes32(""), abi.encode(staticInput), bytes("")
         );
     }
 
