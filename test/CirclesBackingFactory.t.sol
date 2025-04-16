@@ -195,14 +195,13 @@ contract CirclesBackingFactoryTest is Test {
         uint256 currentValue = ValueFactory(factory.valueFactory()).slippageBPS();
         assertEq(currentValue, newBPSvalue);
     }
-    // @todo check naming add description
 
     function test_SetSlippageBPSOutOfBoundaries() public {
         uint256 initialValue = ValueFactory(factory.valueFactory()).slippageBPS();
 
         vm.prank(FACTORY_ADMIN);
         uint256 newBPSvalue = 15000;
-        factory.setSlippageBPS(newBPSvalue); // @audit repot that the function is silent
+        factory.setSlippageBPS(newBPSvalue); // @notice the function stays silent when BPS is not updated
 
         uint256 currentValue = ValueFactory(factory.valueFactory()).slippageBPS();
         assertNotEq(newBPSvalue, currentValue);
@@ -219,17 +218,13 @@ contract CirclesBackingFactoryTest is Test {
         vm.prank(FACTORY_ADMIN);
         factory.setOracle(address(mockToken), address(mockTokenPriceFeed));
     }
-    // @todo `setOracle` price feed
 
     function test_RevertIf_NotAdminSetOraclePriceFeed() public {
-        //IERC20 mockToken = IERC20(makeAddr("mockTokenAddress"));
-        //ValueFactory oracleFactoryAddress = factory.valueFactory();
         vm.expectRevert(CirclesBackingFactory.OnlyAdmin.selector);
         factory.setOracle(address(mockToken), address(mockTokenPriceFeed));
     }
-    // @todo check
 
-    function test_ReverIf_SetOraclePriceFeedNotByFactory() public {
+    function test_RevertIf_SetOraclePriceFeedNotByFactory() public {
         ValueFactory oracleFactoryAddress = factory.valueFactory();
         vm.expectRevert(ValueFactory.OnlyBackingFactory.selector);
         oracleFactoryAddress.setOracle(address(mockToken), address(mockTokenPriceFeed));
@@ -292,7 +287,7 @@ contract CirclesBackingFactoryTest is Test {
 
     function test_RevertIf_OperatorIsNotBackingUser() public {
         vm.prank(TEST_ACCOUNT_1);
-        // Grant approval for all tokens to test acccount 2
+        // Grant approval for all tokens to test account 2
         HUB_V2.setApprovalForAll(TEST_ACCOUNT_2, true);
 
         vm.prank(TEST_ACCOUNT_2);
@@ -324,10 +319,6 @@ contract CirclesBackingFactoryTest is Test {
         uint256 transferredUserCRCAmount = HUB_V2.balanceOf(TEST_ACCOUNT_1, uint256(uint160(TEST_ACCOUNT_1)));
         address predictedInstance = _initUserWithBackedCRC(TEST_ACCOUNT_1, WBTC);
         transferredUserCRCAmount -= HUB_V2.balanceOf(TEST_ACCOUNT_1, uint256(uint160(TEST_ACCOUNT_1)));
-
-        // @todo check the order
-        //address owner, address buyToken, uint256 buyAmount, uint32 validTo, bytes32 appData
-        //factory.getOrder()
 
         assertEq(transferredUserCRCAmount, CRC_AMOUNT);
         // Simulate the CowSwap fill
@@ -419,8 +410,7 @@ contract CirclesBackingFactoryTest is Test {
         CirclesBacking circlesBackingInstance = CirclesBacking(predictedInstance);
 
         uint256 backingAssetDealAmount = CirclesBacking(predictedInstance).buyAmount();
-        // We simulate that settlment is "filled" without transfering `BACKING_ASSET` to the instance
-        // @todo double check if we need it
+        // We simulate that settlement is "filled" without transferring `BACKING_ASSET` to the instance
         bytes memory storedUid = circlesBackingInstance.storedOrderUid();
         bytes32 slot = keccak256(abi.encodePacked(storedUid, uint256(ORDER_FILLED_SLOT)));
         vm.store(COWSWAP_SETTLEMENT, slot, bytes32(uint256(backingAssetDealAmount)));
@@ -433,6 +423,28 @@ contract CirclesBackingFactoryTest is Test {
         );
         _createLBP(predictedInstance);
     }
+
+    function test_RevertIf_InsufficientBackingAssetOnOrderContract2() public {
+        address predictedInstance = _initUserWithBackedCRC(TEST_ACCOUNT_1, WETH);
+        CirclesBacking circlesBackingInstance = CirclesBacking(predictedInstance);
+
+        uint256 backingAssetDealAmount = CirclesBacking(predictedInstance).buyAmount();
+        // We simulate that settlement is "filled" without transferring `BACKING_ASSET` to the instance
+        bytes memory storedUid = circlesBackingInstance.storedOrderUid();
+        bytes32 slot = keccak256(abi.encodePacked(storedUid, uint256(ORDER_FILLED_SLOT)));
+        vm.store(COWSWAP_SETTLEMENT, slot, bytes32(uint256(backingAssetDealAmount)));
+
+        assertEq(circlesBackingInstance.BACKING_ASSET(), WETH);
+        assertEq(IERC20(circlesBackingInstance.BACKING_ASSET()).balanceOf(address(circlesBackingInstance)), 0);
+        CirclesBacking(predictedInstance).resetCowswapOrder();
+
+        // Attempt to create LBP => revert
+        vm.expectRevert(
+            abi.encodeWithSelector(CirclesBacking.BackingAssetBalanceInsufficient.selector, 0, backingAssetDealAmount)
+        );
+        _createLBP(predictedInstance);
+    }
+
 
     function test_BalancerPoolTokensRelease() public {
         address predictedInstance = _initUserWithBackedCRC(TEST_ACCOUNT_1, GNO);
@@ -613,7 +625,7 @@ contract CirclesBackingFactoryTest is Test {
         // Exit
         vm.prank(TEST_ACCOUNT_1);
         factory.exitLBP(lbp, LPTokensAmount, 0, 0);
-        // @todo doublecheck why we need such a  huge delta
+
         assertApproxEqAbs(tokens[0].balanceOf(TEST_ACCOUNT_1), balances[0], MAX_DELTA);
         assertApproxEqAbs(tokens[1].balanceOf(TEST_ACCOUNT_1), balances[1], MAX_DELTA);
     }
@@ -782,9 +794,9 @@ contract CirclesBackingFactoryTest is Test {
         // In basis points: (9000 * 10000) / 9500 = 9474 BPS
         uint256 expectedRatio = (MAX_BPS - NEW_SLIPPAGE_BPS) * MAX_BPS / (MAX_BPS - DEFAULT_SLIPPAGE_BPS);
         uint256 actualRatio = higherSlippageAmount * MAX_BPS / defaultSlippageAmount;
-        //console.log(actualRatio, expectedRatio);
+        
         // Check that the ratio is as expected (with a small tolerance for rounding errors)
-        assertEq(actualRatio, expectedRatio, "Slippage impact should the expected ratio");
+        assertEq(actualRatio, expectedRatio, "Slippage impact should match the expected ratio");
     }
 
     // @notice division by zero error
@@ -798,7 +810,7 @@ contract CirclesBackingFactoryTest is Test {
 
         mockTokenPriceFeed = new MockPriceFeed(ORACLE_DECIMALS, "LowPriceFeed", 1, EXTREMELY_LOW_PRICE);
 
-        // Set the oracles
+        // Set the oracle
         vm.startPrank(FACTORY_ADMIN);
         // Then set our test token's oracle
         factory.setOracle(address(mockToken), address(mockTokenPriceFeed));
@@ -868,7 +880,7 @@ contract CirclesBackingFactoryTest is Test {
         transferredUserCRCAmount -= HUB_V2.balanceOf(TEST_ACCOUNT_1, uint256(uint160(TEST_ACCOUNT_1)));
         assertEq(transferredUserCRCAmount, CRC_AMOUNT);
 
-        // Oracle price changed after initial order creation which allows resseting the order
+        // Oracle price changed after initial order creation which allows resetting the order
         mockTokenPriceFeed.updateAnswer(0.1 ether);
         CirclesBacking(predictedInstance).resetCowswapOrder();
     }
@@ -970,7 +982,7 @@ contract CirclesBackingFactoryTest is Test {
         CirclesBacking(predictedInstance).resetCowswapOrder();
     }
 
-    function test_RevertIf_ResettingNewrlyCreatedOrder() public {
+    function test_RevertIf_ResettingNewlyCreatedOrder() public {
         // Setup user with CRC and backing
         uint256 transferredUserCRCAmount = HUB_V2.balanceOf(TEST_ACCOUNT_1, uint256(uint160(TEST_ACCOUNT_1)));
         address predictedInstance = _initUserWithBackedCRC(TEST_ACCOUNT_1, WBTC);
@@ -981,7 +993,6 @@ contract CirclesBackingFactoryTest is Test {
         vm.expectRevert(CirclesBacking.OrderUidIsTheSame.selector);
         CirclesBacking(predictedInstance).resetCowswapOrder();
     }
-    // @todo update naming
 
     function test_RevertIf_CreatingOrderWithInsufficientBalance() public {
         // Setup
