@@ -468,6 +468,32 @@ contract CirclesBackingFactoryTest is Test, BaseTestContract {
         CirclesBacking(predictedInstance).resetCowswapOrder();
     }
 
+    function test_RevertIf_ResettingSettledOrder() public {
+        // Setup user with CRC and backing
+        uint256 transferredUserCRCAmount = HUB_V2.balanceOf(TEST_ACCOUNT_1, uint256(uint160(TEST_ACCOUNT_1)));
+        address predictedInstance = _initUserWithBackedCRC(TEST_ACCOUNT_1, WBTC);
+        transferredUserCRCAmount -= HUB_V2.balanceOf(TEST_ACCOUNT_1, uint256(uint160(TEST_ACCOUNT_1)));
+
+        assertEq(transferredUserCRCAmount, CRC_AMOUNT);
+
+        _simulateCowSwapFill(predictedInstance, WBTC, BACKING_ASSET_DEAL_AMOUNT);
+
+        vm.expectRevert(CirclesBacking.OrderAlreadySettled.selector);
+        CirclesBacking(predictedInstance).resetCowswapOrder();
+    }
+
+    function test_RevertIf_ResettingNewlyCreatedOrder() public {
+        // Setup user with CRC and backing
+        uint256 transferredUserCRCAmount = HUB_V2.balanceOf(TEST_ACCOUNT_1, uint256(uint160(TEST_ACCOUNT_1)));
+        address predictedInstance = _initUserWithBackedCRC(TEST_ACCOUNT_1, WBTC);
+        transferredUserCRCAmount -= HUB_V2.balanceOf(TEST_ACCOUNT_1, uint256(uint160(TEST_ACCOUNT_1)));
+
+        assertEq(transferredUserCRCAmount, CRC_AMOUNT);
+
+        vm.expectRevert(CirclesBacking.OrderUidIsTheSame.selector);
+        CirclesBacking(predictedInstance).resetCowswapOrder();
+    }
+
     function test_FactoryGetOrderFunction() public view {
         // Parameters for testing
         address owner = TEST_ACCOUNT_1;
@@ -549,32 +575,6 @@ contract CirclesBackingFactoryTest is Test, BaseTestContract {
         assertEq(address(orderData.buyToken), WETH);
         assertEq(orderData.buyAmount, 1 ether);
         assertEq(orderData.validTo, validTo);
-    }
-
-    function test_RevertIf_ResettingSettledOrder() public {
-        // Setup user with CRC and backing
-        uint256 transferredUserCRCAmount = HUB_V2.balanceOf(TEST_ACCOUNT_1, uint256(uint160(TEST_ACCOUNT_1)));
-        address predictedInstance = _initUserWithBackedCRC(TEST_ACCOUNT_1, WBTC);
-        transferredUserCRCAmount -= HUB_V2.balanceOf(TEST_ACCOUNT_1, uint256(uint160(TEST_ACCOUNT_1)));
-
-        assertEq(transferredUserCRCAmount, CRC_AMOUNT);
-
-        _simulateCowSwapFill(predictedInstance, WBTC, BACKING_ASSET_DEAL_AMOUNT);
-
-        vm.expectRevert(CirclesBacking.OrderAlreadySettled.selector);
-        CirclesBacking(predictedInstance).resetCowswapOrder();
-    }
-
-    function test_RevertIf_ResettingNewlyCreatedOrder() public {
-        // Setup user with CRC and backing
-        uint256 transferredUserCRCAmount = HUB_V2.balanceOf(TEST_ACCOUNT_1, uint256(uint160(TEST_ACCOUNT_1)));
-        address predictedInstance = _initUserWithBackedCRC(TEST_ACCOUNT_1, WBTC);
-        transferredUserCRCAmount -= HUB_V2.balanceOf(TEST_ACCOUNT_1, uint256(uint160(TEST_ACCOUNT_1)));
-
-        assertEq(transferredUserCRCAmount, CRC_AMOUNT);
-
-        vm.expectRevert(CirclesBacking.OrderUidIsTheSame.selector);
-        CirclesBacking(predictedInstance).resetCowswapOrder();
     }
 
     function test_RevertIf_CreatingOrderWithInsufficientBalance() public {

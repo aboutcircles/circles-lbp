@@ -89,18 +89,13 @@ contract ValueFactoryTest is Test, BaseTestContract {
     }
 
     function test_PriceUpdate() public {
-        // Setup
-        uint8 DECIMALS = 1;
-        int256 INITIAL_PRICE = 10_000; // $1000.0 with 1 decimal
-        mockTokenPriceFeed = new MockPriceFeed(DECIMALS, "MockTokenPrice", 1, INITIAL_PRICE);
-
         vm.prank(FACTORY_ADMIN);
         factory.setOracle(address(mockToken), address(mockTokenPriceFeed));
         ValueFactory valueFactory = factory.valueFactory();
         uint256 initialAmount = valueFactory.getValue(address(mockToken));
 
         // Test price update - higher price should result in lower token amount
-        int256 DOUBLED_PRICE = 20_000; // $2000.0 with 1 decimal
+        int256 DOUBLED_PRICE = INITIAL_FEED_PRICE * 2;
         mockTokenPriceFeed.updateAnswer(DOUBLED_PRICE);
         uint256 newAmount = valueFactory.getValue(address(mockToken));
 
@@ -110,16 +105,10 @@ contract ValueFactoryTest is Test, BaseTestContract {
     }
 
     function test_StalePriceDataHandling() public {
-        // Setup
-        uint8 DECIMALS = 1;
-        int256 TEST_PRICE = 10_000;
-        mockTokenPriceFeed = new MockPriceFeed(DECIMALS, "MockTokenPrice", 1, TEST_PRICE);
-
         vm.prank(FACTORY_ADMIN);
         factory.setOracle(address(mockToken), address(mockTokenPriceFeed));
         ValueFactory valueFactory = factory.valueFactory();
 
-        mockTokenPriceFeed.updateAnswer(TEST_PRICE);
         // Test with stale price data (more than 1 day old)
         uint256 staleTimestamp = block.timestamp + 2 days;
         vm.warp(staleTimestamp);
@@ -129,11 +118,6 @@ contract ValueFactoryTest is Test, BaseTestContract {
     }
 
     function test_ZeroPriceHandling() public {
-        // Setup
-        uint8 DECIMALS = 1;
-        int256 TEST_PRICE = 10_000;
-        mockTokenPriceFeed = new MockPriceFeed(DECIMALS, "MockTokenPrice", 1, TEST_PRICE);
-
         vm.prank(FACTORY_ADMIN);
         factory.setOracle(address(mockToken), address(mockTokenPriceFeed));
         ValueFactory valueFactory = factory.valueFactory();
@@ -153,8 +137,7 @@ contract ValueFactoryTest is Test, BaseTestContract {
         uint8 oracleDecimals = uint8(bound(fuzzedDecimals, 1, 20));
 
         // Setup with a token that has few decimals
-        int256 TEST_PRICE = 1_000 * int256(10 ** oracleDecimals);
-        mockTokenPriceFeed = new MockPriceFeed(oracleDecimals, "MockTokenPrice", 1, TEST_PRICE);
+        mockTokenPriceFeed = new MockPriceFeed(oracleDecimals, "MockTokenPrice", 1, INITIAL_FEED_PRICE);
 
         // Constants from the ValueFactory contract
         uint256 MAX_BPS = 10000; // 100% in basis points (from ValueFactory contract)

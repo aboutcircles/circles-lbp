@@ -26,6 +26,7 @@ contract BaseTestContract is Test {
     uint256 public constant YEAR = 365 days;
     uint256 public constant MAX_DELTA = 3e10;
     uint256 public constant SWAP_FEE = 0.03 ether;
+    int256  public constant INITIAL_FEED_PRICE = 10 ether;
 
     // Storage slots
     uint256 public constant ORDER_FILLED_SLOT = 2;
@@ -107,7 +108,7 @@ contract BaseTestContract is Test {
 
         // Deploy mock contracts for custom token testing
         mockToken = new MockERC20("MockToken", "MTKN", 18, 1 ether);
-        mockTokenPriceFeed = new MockPriceFeed(18, "MockTokenPrice", 1, 10);
+        mockTokenPriceFeed = new MockPriceFeed(18, "MockTokenPrice", 1, INITIAL_FEED_PRICE);
     }
 
     // -------------------------------------------------------------------------
