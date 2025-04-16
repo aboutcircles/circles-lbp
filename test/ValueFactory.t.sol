@@ -15,7 +15,6 @@ import {BaseTestContract} from "test/helpers/BaseTestContract.sol";
  * @notice Foundry test suite for ValueFactory instance.
  */
 contract ValueFactoryTest is Test, BaseTestContract {
-
     // -------------------------------------------------------------------------
     // Admin-Only Tests
     // -------------------------------------------------------------------------
@@ -35,7 +34,7 @@ contract ValueFactoryTest is Test, BaseTestContract {
         vm.prank(FACTORY_ADMIN);
         uint256 newBPSvalue = 15000;
         factory.setSlippageBPS(newBPSvalue);
-        // @notice the function stays silent if BPS is not updated when trying to set slippage bps out of boundaries 
+        // @notice the function stays silent if BPS is not updated when trying to set slippage bps out of boundaries
 
         uint256 currentValue = ValueFactory(factory.valueFactory()).slippageBPS();
         assertNotEq(newBPSvalue, currentValue);
@@ -52,7 +51,6 @@ contract ValueFactoryTest is Test, BaseTestContract {
         vm.expectRevert(ValueFactory.OnlyBackingFactory.selector);
         ValueFactory(oracleFactoryAddress).setSlippageBPS(100);
     }
-
 
     function test_RevertIf_PriceFeedSetNotByAdmin() public {
         vm.expectRevert(CirclesBackingFactory.OnlyAdmin.selector);
@@ -197,7 +195,7 @@ contract ValueFactoryTest is Test, BaseTestContract {
         // In basis points: (9000 * 10000) / 9500 = 9474 BPS
         uint256 expectedRatio = (MAX_BPS - NEW_SLIPPAGE_BPS) * MAX_BPS / (MAX_BPS - DEFAULT_SLIPPAGE_BPS);
         uint256 actualRatio = higherSlippageAmount * MAX_BPS / defaultSlippageAmount;
-        
+
         // Check that the ratio is as expected (with a small tolerance for rounding errors)
         assertEq(actualRatio, expectedRatio, "Slippage impact should match the expected ratio");
     }
