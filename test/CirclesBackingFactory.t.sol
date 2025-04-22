@@ -466,6 +466,7 @@ contract CirclesBackingFactoryTest is Test, BaseTestContract {
         // Oracle price changed after initial order creation which allows resetting the order
         mockTokenPriceFeed.updateAnswer(0.1 ether);
         CirclesBacking(predictedInstance).resetCowswapOrder();
+        // TODO: add effect checks
     }
 
     function test_RevertIf_ResettingSettledOrder() public {
@@ -614,6 +615,7 @@ contract CirclesBackingFactoryTest is Test, BaseTestContract {
         circlesBackingOrder.getTradeableOrder(
             TEST_ACCOUNT_1, address(0x0), bytes32(""), abi.encode(staticInput), bytes("")
         );
+        // TODO: effect checks
     }
 
     function test_RevertIf_CreatingOrderWithUnsupportedAsset() public {

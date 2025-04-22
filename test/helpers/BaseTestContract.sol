@@ -19,6 +19,12 @@ import {MockPriceFeed} from "test/mock/MockPriceFeed.sol";
  */
 contract BaseTestContract is Test {
     // -------------------------------------------------------------------------
+    // Events
+    // -------------------------------------------------------------------------
+    event OracleUpdated(address indexed token, address indexed oracle);
+    event SlippageUpdated(uint256 indexed newSlippageBPS);
+
+    // -------------------------------------------------------------------------
     // Constants
     // -------------------------------------------------------------------------
     uint256 public constant USDC_START_AMOUNT = 100e6; // 100 USDC

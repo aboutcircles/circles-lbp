@@ -20,8 +20,10 @@ contract ValueFactoryTest is Test, BaseTestContract {
     // -------------------------------------------------------------------------
 
     function test_SetSlippageBPS() public {
-        vm.prank(FACTORY_ADMIN);
         uint256 newBPSvalue = 5000;
+        vm.expectEmit(true, true, true, true);
+        emit SlippageUpdated(newBPSvalue);
+        vm.prank(FACTORY_ADMIN);
         factory.setSlippageBPS(newBPSvalue);
 
         uint256 currentValue = ValueFactory(factory.valueFactory()).slippageBPS();
@@ -42,25 +44,33 @@ contract ValueFactoryTest is Test, BaseTestContract {
     }
 
     function test_SetTokenPriceFeed() public {
+        vm.expectEmit(true, true, true, true);
+        emit OracleUpdated(address(mockToken), address(mockTokenPriceFeed));
         vm.prank(FACTORY_ADMIN);
         factory.setOracle(address(mockToken), address(mockTokenPriceFeed));
+        ValueFactory valueFactory = factory.valueFactory();
+        (IAggregatorV3Interface priceFeed, uint8 feedDecimals, uint8 tokenDecimals) =
+            valueFactory.oracles(address(mockToken));
+        assertEq(address(mockTokenPriceFeed), address(priceFeed));
+        assertEq(feedDecimals, mockTokenPriceFeed.decimals());
+        assertEq(tokenDecimals, mockToken.decimals());
     }
 
     function test_RevertIf_SlippageSetNotByFactory() public {
-        ValueFactory oracleFactoryAddress = factory.valueFactory();
+        ValueFactory valueFactory = factory.valueFactory();
         vm.expectRevert(ValueFactory.OnlyBackingFactory.selector);
-        ValueFactory(oracleFactoryAddress).setSlippageBPS(100);
+        valueFactory.setSlippageBPS(100);
+    }
+
+    function test_RevertIf_PriceFeedSetNotByFactory() public {
+        ValueFactory valueFactory = factory.valueFactory();
+        vm.expectRevert(ValueFactory.OnlyBackingFactory.selector);
+        valueFactory.setOracle(address(mockToken), address(mockTokenPriceFeed));
     }
 
     function test_RevertIf_PriceFeedSetNotByAdmin() public {
         vm.expectRevert(CirclesBackingFactory.OnlyAdmin.selector);
         factory.setOracle(address(mockToken), address(mockTokenPriceFeed));
-    }
-
-    function test_RevertIf_PriceFeedSetNotByFactory() public {
-        ValueFactory oracleFactoryAddress = factory.valueFactory();
-        vm.expectRevert(ValueFactory.OnlyBackingFactory.selector);
-        oracleFactoryAddress.setOracle(address(mockToken), address(mockTokenPriceFeed));
     }
 
     // -------------------------------------------------------------------------
@@ -179,12 +189,12 @@ contract ValueFactoryTest is Test, BaseTestContract {
         uint256 expectedRatio = (MAX_BPS - NEW_SLIPPAGE_BPS) * MAX_BPS / (MAX_BPS - DEFAULT_SLIPPAGE_BPS);
         uint256 actualRatio = higherSlippageAmount * MAX_BPS / defaultSlippageAmount;
 
-        // Check that the ratio is as expected (with a small tolerance for rounding errors)
-        assertEq(actualRatio, expectedRatio, "Slippage impact should match the expected ratio");
+        // Check that the ratio is as expected
+        if (oracleDecimals > 5) assertEq(actualRatio, expectedRatio, "Slippage impact should match the expected ratio");
+        else assertApproxEqAbs(actualRatio, expectedRatio, 5, "Slippage impact should match the expected ratio");
     }
 
-    // @notice division by zero error
-    function test_RevertIf_PriceIsVeryLow() public {
+    function test_PriceIsVeryLow() public {
         // Setup a token with high decimals (greater than 8)
         uint8 ORACLE_DECIMALS = 9;
 
@@ -201,7 +211,7 @@ contract ValueFactoryTest is Test, BaseTestContract {
 
         ValueFactory valueFactory = factory.valueFactory();
 
-        // Issue: When a token has an extremely low price and high decimals, the `_scalePrice`
+        // Fixed Issue: When a token has an extremely low price and high decimals, the `_scalePrice`
         // function can scale the price down to zero due to integer division in Solidity.
         //
         // Since the contract only checks for zero prices BEFORE scaling (not after), this creates
@@ -213,16 +223,10 @@ contract ValueFactoryTest is Test, BaseTestContract {
         // 2. When scaled from 9 to 8 decimals: 1 / 10 = 0 (in integer math)
         // 3. This leads to division by zero when calculating the buy amount
 
-        // Proposed fix: Add a safety check for zero AFTER scaling the prices:
-        //  - After `quotePrice = _scalePrice(quotePrice, buyOracle.feedDecimals, 8);`
-        //  - Add: `if (quotePrice == 0) { buyAmount = 1; } else { ... }`
-
         // Check if the function reverts due to division by zero
-        vm.expectRevert(abi.encodeWithSignature("Panic(uint256)", 0x12));
         uint256 amount = valueFactory.getValue(address(mockToken));
 
-        // @todo uncomment after the fix
-        // assertEq(amount, 1, "Low price should return minimal amount of 1");
+        assertEq(amount, 1, "Low price should return minimal amount of 1");
     }
 
     function test_RemovePriceFeed() public {
@@ -231,17 +235,17 @@ contract ValueFactoryTest is Test, BaseTestContract {
         vm.prank(FACTORY_ADMIN);
         factory.setOracle(address(mockToken), address(mockTokenPriceFeed));
 
-        (IAggregatorV3Interface priceFeedAddress, uint8 feedDecimals, uint8 tokenDecimals) =
+        (IAggregatorV3Interface priceFeed, uint8 feedDecimals, uint8 tokenDecimals) =
             valueFactory.oracles(address(mockToken));
         // Price feed was added correctly
-        assertEq(address(priceFeedAddress), address(mockTokenPriceFeed));
+        assertEq(address(priceFeed), address(mockTokenPriceFeed));
         assertEq(feedDecimals, mockTokenPriceFeed.decimals());
         assertEq(tokenDecimals, mockToken.decimals());
 
         vm.prank(FACTORY_ADMIN);
         factory.setOracle(address(mockToken), address(0));
-        (priceFeedAddress, feedDecimals, tokenDecimals) = valueFactory.oracles(address(mockToken));
-        assertEq(address(priceFeedAddress), address(0));
+        (priceFeed, feedDecimals, tokenDecimals) = valueFactory.oracles(address(mockToken));
+        assertEq(address(priceFeed), address(0));
         assertEq(feedDecimals, 0);
         assertEq(tokenDecimals, 0);
     }

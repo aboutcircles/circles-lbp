@@ -234,6 +234,9 @@ contract ValueFactory is IValueFactory {
 
         (uint256 basePrice, uint256 sellUpdatedAt) = _getLatestRoundData(sellOracle.priceFeed);
         (uint256 quotePrice, uint256 buyUpdatedAt) = _getLatestRoundData(buyOracle.priceFeed);
+        // Scale both prices to 8 decimals
+        basePrice = _scalePrice(basePrice, sellOracle.feedDecimals, 8);
+        quotePrice = _scalePrice(quotePrice, buyOracle.feedDecimals, 8);
 
         // Price data older than 1 day is considered stale
         uint256 maxStaleTimestamp = block.timestamp - 1 days;
@@ -247,10 +250,6 @@ contract ValueFactory is IValueFactory {
         if (quotePrice == 0 || buyUpdatedAt < maxStaleTimestamp) {
             buyAmount = 1;
         } else {
-            // Scale both prices to 8 decimals
-            basePrice = _scalePrice(basePrice, sellOracle.feedDecimals, 8);
-            quotePrice = _scalePrice(quotePrice, buyOracle.feedDecimals, 8);
-
             uint256 buyUnit = 10 ** buyOracle.tokenDecimals;
 
             // Calculate how much buy token you get for SELL_AMOUNT of sell token
