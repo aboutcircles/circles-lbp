@@ -5,8 +5,10 @@ import {Script, console} from "forge-std/Script.sol";
 import {CirclesBackingFactory} from "src/CirclesBackingFactory.sol";
 
 contract DeployFactory is Script {
-    address deployer = address(0x6BF173798733623cc6c221eD52c010472247d861);
-    CirclesBackingFactory public circlesBackingFactory; // 0xD10D53Ec77cE25829b7d270D736403218AF22Ad9
+    address deployer = address(0x2AEE0499c7E6df0b9639815C0592A835f62D7e2a);
+    CirclesBackingFactory public circlesBackingFactory; // 0x00c99CebB2FD24545e248Aa6aF2F4432D4b6349a
+    // order 0xaBEfc5bFcab0aFbf9a4191C3D78887a7007EfE73
+    // value 0xB2A2541D5002284a7542fcB2e4771490B7AE4d08
 
     function setUp() public {}
 
@@ -21,25 +23,13 @@ contract DeployFactory is Script {
 }
 
 /*
-curl -X 'POST' \
-  'https://barn.api.cow.fi/xdai/api/v1/orders' \
+Register app data
+
+curl -X 'PUT' \
+  'https://api.cow.fi/xdai/api/v1/app_data' \
   -H 'accept: application/json' \
   -H 'Content-Type: application/json' \
   -d '{
-  "sellToken": "0x2a22f9c3b484c3629090FeED35F17Ff8F88f76F0",
-  "buyToken": "0x6A023CCd1ff6F2045C3309768eAd9E68F978f6e1",
-  "receiver": "0xe75F06c807038D7D38e4f9716FF953eA1dA39157",
-  "sellAmount": "10000000",
-  "buyAmount": "1",
-  "validTo": 1896512045,
-  "feeAmount": "0",
-  "kind": "sell",
-  "partiallyFillable": false,
-  "sellTokenBalance": "erc20",
-  "buyTokenBalance": "erc20",
-  "signingScheme": "presign",
-  "signature": "0x",
-  "from": "0xe75F06c807038D7D38e4f9716FF953eA1dA39157",
-  "appData": "{\"version\":\"1.1.0\",\"appCode\":\"Circles backing powered by AboutCircles\",\"metadata\":{\"hooks\":{\"version\":\"0.1.0\",\"post\":[{\"target\":\"0xe75f06c807038d7d38e4f9716ff953ea1da39157\",\"callData\":\"0x13e8f89f\",\"gasLimit\":\"6000000\"}]}}}"
+  "fullAppData": "{\"version\":\"1.1.0\",\"appCode\":\"Circles backing powered by AboutCircles\",\"metadata\":{\"hooks\":{\"version\":\"0.1.0\",\"post\":[{\"target\":\"0x62313a160cd50dc151b9cd0466f895722835a9da\",\"callData\":\"0x13e8f89f\",\"gasLimit\":\"6000000\"}]}}}"
 }'
 */

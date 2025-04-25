@@ -2,6 +2,24 @@
 pragma solidity ^0.8.28;
 
 import {IVault} from "src/interfaces/IVault.sol";
+import {IConditionalOrder} from "composable-cow/interfaces/IConditionalOrder.sol";
+
+library GPv2Order {
+    struct Data {
+        address sellToken;
+        address buyToken;
+        address receiver;
+        uint256 sellAmount;
+        uint256 buyAmount;
+        uint32 validTo;
+        bytes32 appData;
+        uint256 feeAmount;
+        bytes32 kind;
+        bool partiallyFillable;
+        bytes32 sellTokenBalance;
+        bytes32 buyTokenBalance;
+    }
+}
 
 interface ICirclesBackingFactory {
     error BackingInFavorDisallowed();
@@ -27,14 +45,13 @@ interface ICirclesBackingFactory {
 
     function ADMIN() external view returns (address);
     function CRC_AMOUNT() external view returns (uint256);
-    function GET_UID_CONTRACT() external view returns (address);
+    function DOMAIN_SEPARATOR() external view returns (bytes32);
     function HUB_V2() external view returns (address);
     function INSTANCE_BYTECODE_HASH() external view returns (bytes32);
     function LBP_FACTORY() external view returns (address);
     function LIFT_ERC20() external view returns (address);
     function TRADE_AMOUNT() external view returns (uint256);
     function USDC() external view returns (address);
-    function VALID_TO() external view returns (uint32);
     function VAULT() external view returns (address);
     function backerOf(address circlesBacking) external view returns (address backer);
     function backingParameters()
@@ -45,22 +62,34 @@ interface ICirclesBackingFactory {
             address transientBackingAsset,
             address transientStableCRC,
             uint256 transientStableCRCAmount,
+            bytes32 transientAppData,
             address usdc,
             uint256 usdcAmount
         );
+    function circlesBackingOrder() external view returns (address);
     function computeAddress(address backer) external view returns (address predictedAddress);
     function createLBP(address personalCRC, uint256 personalCRCAmount, address backingAsset, uint256 backingAssetAmount)
         external
         returns (address lbp, bytes32 poolId, IVault.JoinPoolRequest memory request, address vault);
     function exitLBP(address lbp, uint256 bptAmount, uint256 minAmountOut0, uint256 minAmountOut1) external;
-    function generateOrderUID(address instance, address backingAsset, uint256 buyAmount)
-        external
-        view
-        returns (bytes memory orderUid);
     function getAppData(address _circlesBackingInstance)
         external
         pure
         returns (string memory appDataString, bytes32 appDataHash);
+    function getConditionalParamsAndOrderUid(
+        address owner,
+        address backingAsset,
+        uint32 orderDeadline,
+        bytes32 appData,
+        uint256 nonce
+    )
+        external
+        view
+        returns (uint256 buyAmount, IConditionalOrder.ConditionalOrderParams memory params, bytes memory orderUid);
+    function getOrder(address owner, address buyToken, uint256 buyAmount, uint32 validTo, bytes32 appData)
+        external
+        view
+        returns (GPv2Order.Data memory order);
     function getPersonalCircles(address avatar) external returns (address inflationaryCircles);
     function isActiveLBP(address backer) external view returns (bool);
     function notifyRelease(address lbp) external;
@@ -73,4 +102,5 @@ interface ICirclesBackingFactory {
     function setReleaseTimestamp(uint32 timestamp) external;
     function setSupportedBackingAssetStatus(address backingAsset, bool status) external;
     function supportedBackingAssets(address supportedAsset) external view returns (bool);
+    function valueFactory() external view returns (address);
 }
