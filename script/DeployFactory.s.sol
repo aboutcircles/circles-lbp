@@ -5,17 +5,18 @@ import {Script, console} from "forge-std/Script.sol";
 import {CirclesBackingFactory} from "src/CirclesBackingFactory.sol";
 
 contract DeployFactory is Script {
-    address deployer = address(0x2AEE0499c7E6df0b9639815C0592A835f62D7e2a);
-    CirclesBackingFactory public circlesBackingFactory; // 0x00c99CebB2FD24545e248Aa6aF2F4432D4b6349a
-    // order 0xaBEfc5bFcab0aFbf9a4191C3D78887a7007EfE73
-    // value 0xB2A2541D5002284a7542fcB2e4771490B7AE4d08
+    address deployer = address(0xaAb15A045e74c6539B696B115e763A22BE5C9594);
+    address admin = address(0x7ADd2C8D1f7CE98cA9a6A7c0122916787988071F);
+    CirclesBackingFactory public circlesBackingFactory; // 0xecEd91232C609A42F6016860E8223B8aEcaA7bd0
+    // order 0x43866C5602B0E3b3272424396e88b849796Dc608
+    // value 0x630E480d67f807082843C9f0ab44918BDce7A018
 
     function setUp() public {}
 
     function run() public {
         vm.startBroadcast(deployer);
 
-        circlesBackingFactory = new CirclesBackingFactory(deployer, 10);
+        circlesBackingFactory = new CirclesBackingFactory(admin, 100);
 
         vm.stopBroadcast();
         console.log(address(circlesBackingFactory), "CirclesBackingFactory");
