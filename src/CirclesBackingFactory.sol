@@ -179,10 +179,10 @@ contract CirclesBackingFactory {
     string internal constant LBP_PREFIX = "circlesBackingLBP-";
 
     /// @notice Circles Hub v2.
-    IHub public constant HUB_V2 = IHub(address(0xc12C1E50ABB450d6205Ea2C3Fa861b3B834d13e8));
+    IHub public constant HUB_V2 = IHub(address(0x3D61f0A272eC69d65F5CFF097212079aaFDe8267));
 
     /// @notice Circles v2 LiftERC20 contract.
-    ILiftERC20 public constant LIFT_ERC20 = ILiftERC20(address(0x5F99a795dD2743C36D63511f0D4bc667e6d3cDB5));
+    ILiftERC20 public constant LIFT_ERC20 = ILiftERC20(address(0xF47c14035e23E35D551F7d3d96Abbc028143CC11));
 
     /// @notice Amount of Circles (ERC1155) to use in LBP initial liquidity.
     uint256 public constant CRC_AMOUNT = 48 ether;
@@ -255,12 +255,11 @@ contract CirclesBackingFactory {
      * @notice Initializes the CirclesBackingFactory.
      * @dev Sets default supported backing assets and deploys the specialized CirclesBackingOrder & ValueFactory.
      * @param admin The address that will be assigned as `ADMIN`.
-     * @param usdcInteger The integer amount of USDC to be used (1 = 1 USDC, 10 = 10 USDC, etc.).
-     *        It is multiplied by 1e6 internally to fit USDC’s 6 decimal places.
+     * @param usdcAmount The amount of USDC to be used.
      */
-    constructor(address admin, uint256 usdcInteger) {
+    constructor(address admin, uint256 usdcAmount) {
         ADMIN = admin;
-        TRADE_AMOUNT = usdcInteger * USDC_UNIT;
+        TRADE_AMOUNT = usdcAmount;
 
         // Set default supported assets: WBTC, WETH, GNO, sDAI on Gnosis Chain.
         _setSupportedBackingAssetStatus(address(0x8e5bBbb09Ed1ebdE8674Cda39A0c169401db4252), true); // WBTC
