@@ -12,104 +12,104 @@ import {IBaseGroup} from "src/interfaces/base-group/IBaseGroup.sol";
 import {IBaseMintHandler} from "src/interfaces/base-group/IBaseMintHandler.sol";
 import {ISDAI} from "src/interfaces/ISDAI.sol";
 
-/**
- * @title Group LBP Factory
- */
+/// @title Group LBP Factory
+/// @notice Factory contract to deploy Balancer Liquidity Bootstrapping Pools (LBPs) for Circles Group CRC tokens paired against sDAI.
+/// @dev Interacts with Circles Hub v2 for wrapping CRC tokens, and with Balancer V2 for pool creation and liquidity provision.
 contract GroupLBPFactory {
     /*//////////////////////////////////////////////////////////////
                              Errors
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Thrown when a function is called by any address that is not the HubV2.
+    /// @notice Thrown when a function is called by any address that is not the Circles Hub v2.
     error OnlyHub();
 
     /// @notice Thrown when the received CRC amount does not match the exact required CRC amount.
-    /// @param required The required CRC amount.
-    /// @param received The actual CRC amount received.
+    /// @param required The required CRC token amount.
+    /// @param received The actual CRC token amount received.
     error NotExactlyRequiredCRCAmount(uint256 required, uint256 received);
 
-    /// @notice Thrown when the process is attempted for a non-base-group avatar address in the Hub.
+    /// @notice Thrown when the provided avatar address is not a Base Group.
     error OnlyBaseGroupsAreSupported();
 
+    /// @notice Thrown when attempting to create more than one LBP for the same creator and group.
     error OnlyOneLBPPerGroup();
 
-    /// @notice Thrown when trying to exit from an Balances pool that does not contain exactly two tokens.
+    /// @notice Thrown when trying to exit a pool that does not contain exactly two tokens.
     error OnlyTwoTokenLBPSupported();
 
     /*//////////////////////////////////////////////////////////////
                              Events
     //////////////////////////////////////////////////////////////*/
 
-    /**
-     * @notice Emitted when a group LBP creation process is completed.
-     * @param creator The address, which created LBP and submitted required liquidity.
-     * @param group The group for which LBP was created.
-     * @param lbp The newly created LBP address.
-     */
+    /// @notice Emitted when a group LBP creation process is completed.
+    /// @param creator The address that created the LBP and provided initial liquidity.
+    /// @param group The base group avatar address for which the LBP was created.
+    /// @param lbp The address of the newly deployed LBP pool.
     event GroupLBPCreated(address indexed creator, address indexed group, address indexed lbp);
 
     /*//////////////////////////////////////////////////////////////
                            Constants
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Circles Hub v2.
+    /// @notice Circles Hub v2 contract address.
     address public constant HUB_V2 = address(0xc12C1E50ABB450d6205Ea2C3Fa861b3B834d13e8);
 
+    /// @notice BaseGroupFactory contract address.
     IBaseGroupFactory public constant BASE_GROUP_FACTORY =
         IBaseGroupFactory(address(0xD0B5Bd9962197BEaC4cbA24244ec3587f19Bd06d));
 
-    /// @notice Balancer v2 LBPFactory address.
+    /// @notice Balancer V2 NoProtocolFee Liquidity Bootstrapping Pool Factory address.
     INoProtocolFeeLiquidityBootstrappingPoolFactory public constant LBP_FACTORY =
         INoProtocolFeeLiquidityBootstrappingPoolFactory(address(0x85a80afee867aDf27B50BdB7b76DA70f1E853062));
 
-    /// @notice Balancer v2 Vault address.
+    /// @notice Balancer V2 Vault contract address.
     address public constant VAULT = address(0xBA12222222228d8Ba445958a75a0704d566BF2C8);
 
-    /// @notice sDAI contract address on Gnosis Chain.
+    /// @notice sDAI token contract address on Gnosis Chain.
     address public constant SDAI = 0xaf204776c7245bF4147c2612BF6e5972Ee483701;
 
-    /// @notice Amount denominated in xDAI to use in a sDAI calculation for pool liquidity.
+    /// @notice Amount of xDAI to use when calculating sDAI shares for initial liquidity (1,000 xDAI).
     uint256 public constant STABLE_AMOUNT = 1_000 ether;
 
-    /// @notice Amount of group Circles (ERC1155) to use in LBP initial liquidity.
+    /// @notice Amount of group CRC tokens (ERC1155) for initial LBP liquidity (480 CRC).
     uint256 public constant CRC_AMOUNT = 480 ether;
 
-    /// @dev LBP group CRC token weight 1%.
+    /// @dev Weight for CRC token at pool initialization (1%).
     uint256 internal constant WEIGHT_CRC = 0.01 ether;
 
-    /// @dev LBP sDAI token weight 99%.
+    /// @dev Weight for sDAI token at pool initialization (99%).
     uint256 internal constant WEIGHT_SDAI = 0.99 ether;
 
-    /// @notice LBP tokens final weight 50%.
+    /// @notice Final target weight for each token after weight ramp (50% each).
     uint256 internal constant WEIGHT_FINAL = 0.5 ether;
 
-    /// @notice Token weight update duration set to 60 days.
+    /// @notice Duration over which pool weights are gradually updated (60 days).
     uint256 internal constant UPDATE_WEIGHT_DURATION = 60 days;
 
-    /// @dev Swap fee percentage is set to 1% for the LBP.
+    /// @dev Swap fee percentage for the LBP (1%).
     uint256 internal constant SWAP_FEE = 0.01 ether;
 
-    /// @dev BPT name and symbol prefix for LBPs created in this factory.
+    /// @dev Prefix for naming Balancer Pool Tokens (BPT) created by this factory.
     string internal constant LBP_PREFIX = "groupLBP-";
 
     /*//////////////////////////////////////////////////////////////
                             Storage
     //////////////////////////////////////////////////////////////*/
 
+    /// @notice Mapping of creator address and group avatar to deployed LBP pool address.
     mapping(address creator => mapping(address group => address lbp)) public lbpOf;
 
+    /// @notice Mapping of LBP pool address to its creator.
     mapping(address lbp => address creator) public lbpCreator;
 
+    /// @notice Mapping of LBP pool address to its group avatar.
     mapping(address lbp => address group) public lbpGroup;
 
     /*//////////////////////////////////////////////////////////////
                             Modifiers
     //////////////////////////////////////////////////////////////*/
 
-    /**
-     * @dev A minimal non-reentrancy guard using transient storage.
-     *      See https://soliditylang.org/blog/2024/01/26/transient-storage/
-     */
+    /// @dev Non-reentrant guard using transient storage pattern.
     modifier nonReentrant() {
         assembly {
             if tload(0) { revert(0, 0) }
@@ -125,32 +125,35 @@ contract GroupLBPFactory {
                           Constructor
     //////////////////////////////////////////////////////////////*/
 
-    /**
-     * @notice Initializes the GroupLBPFactory.
-     */
+    /// @notice Initializes the GroupLBPFactory.
     constructor() {}
 
     /*//////////////////////////////////////////////////////////////
                           LBP Creation Logic
     //////////////////////////////////////////////////////////////*/
 
-    /// @dev requires sDAI preapproval
+    /// @notice Creates a new Balancer LBP for the specified group, pairing its CRC token with sDAI.
+    /// @dev Requires sDAI preapproval.
+    /// @param creator The address providing initial liquidity and receiving BPT tokens.
+    /// @param group The group avatar address for which to create the LBP.
+    /// @param stableCRCAddress The ERC20 address of the wrapped CRC token.
+    /// @param stableCRCAmount The amount of wrapped CRC tokens to deposit as initial liquidity.
     function createGroupLBP(address creator, address group, address stableCRCAddress, uint256 stableCRCAmount)
         internal
     {
         if (lbpOf[creator][group] != address(0)) revert OnlyOneLBPPerGroup();
 
+        // Convert xDAI amount to sDAI shares and transfer from creator
         uint256 sDAIEquivalent = ISDAI(SDAI).convertToShares(STABLE_AMOUNT);
-        // transfer sDAI equivalent of STABLE_AMOUNT from creator
         IERC20(SDAI).transferFrom(creator, address(this), sDAIEquivalent);
 
-        // Prepare the tokens array for Balancer
+        // Arrange token order based on address sorting
         IERC20[] memory tokens = new IERC20[](2);
         bool tokenZero = stableCRCAddress < SDAI;
         tokens[0] = tokenZero ? IERC20(stableCRCAddress) : IERC20(SDAI);
         tokens[1] = tokenZero ? IERC20(SDAI) : IERC20(stableCRCAddress);
 
-        // Create the LBP
+        // Deploy the LBP via Balancer factory
         address lbp = LBP_FACTORY.create(
             _name(stableCRCAddress),
             _symbol(stableCRCAddress),
@@ -163,46 +166,43 @@ contract GroupLBPFactory {
 
         bytes32 poolId = ILBP(lbp).getPoolId();
 
-        // Prepare amountsIn
+        // Prepare join parameters
         uint256[] memory amountsIn = new uint256[](2);
         amountsIn[0] = tokenZero ? stableCRCAmount : sDAIEquivalent;
         amountsIn[1] = tokenZero ? sDAIEquivalent : stableCRCAmount;
 
-        // Encode the userData needed for Balancer
         bytes memory userData = abi.encode(ILBP.JoinKind.INIT, amountsIn);
-        IVault.JoinPoolRequest memory request = IVault.JoinPoolRequest(tokens, amountsIn, userData, false);
+        IVault.JoinPoolRequest memory request = IVault.JoinPoolRequest({
+            assets: tokens,
+            maxAmountsIn: amountsIn,
+            userData: userData,
+            fromInternalBalance: false
+        });
 
-        // Approve Vault to spend stable CRC and sDAI
+        // Approve Vault to pull tokens
         IERC20(stableCRCAddress).approve(VAULT, stableCRCAmount);
         IERC20(SDAI).approve(VAULT, sDAIEquivalent);
-
-        // Provide liquidity into the LBP and set creator as BPT recipient
+        // Provide initial liquidity into the LBP and set the creator as BPT recipient
         IVault(VAULT).joinPool(poolId, address(this), creator, request);
 
-        // Gradually update weights
-        uint256 timestampWeightUpdate = block.timestamp + UPDATE_WEIGHT_DURATION;
-        ILBP(lbp).updateWeightsGradually(block.timestamp, timestampWeightUpdate, _endWeights());
+        // Schedule weight ramp to equal 50/50 over duration
+        ILBP(lbp).updateWeightsGradually(block.timestamp, block.timestamp + UPDATE_WEIGHT_DURATION, _endWeights());
 
-        // link creator and group to lbp
+        // Store linking and emit event
         lbpOf[creator][group] = lbp;
-        // link lbp to creator
         lbpCreator[lbp] = creator;
-        // link lbp to group
         lbpGroup[lbp] = group;
 
         emit GroupLBPCreated(creator, group, lbp);
     }
 
-    /**
-     * @notice Exits liquidity from an existing LBP by burning BPT tokens and receiving the underlying assets.
-     * @dev Caller must approve this factory to spend their BPT tokens before calling.
-     * @param lbp The address of the LBP pool.
-     * @param bptAmount The amount of BPT tokens to burn.
-     * @param minAmountOut0 The minimum amount of the first underlying asset to receive.
-     * @param minAmountOut1 The minimum amount of the second underlying asset to receive.
-     */
+    /// @notice Exits liquidity from an existing LBP by burning BPT tokens.
+    /// @dev Caller must have approved this factory to spend their BPT tokens.
+    /// @param lbp The address of the LBP pool.
+    /// @param bptAmount The amount of BPT tokens to burn.
+    /// @param minAmountOut0 The minimum amount of the first underlying token to receive.
+    /// @param minAmountOut1 The minimum amount of the second underlying token to receive.
     function exitLBP(address lbp, uint256 bptAmount, uint256 minAmountOut0, uint256 minAmountOut1) external {
-        // Transfer BPT tokens from the caller to this factory
         IERC20(lbp).transferFrom(msg.sender, address(this), bptAmount);
 
         uint256[] memory minAmountsOut = new uint256[](2);
@@ -214,54 +214,48 @@ contract GroupLBPFactory {
         (IERC20[] memory poolTokens,,) = IVault(VAULT).getPoolTokens(poolId);
         if (poolTokens.length != minAmountsOut.length) revert OnlyTwoTokenLBPSupported();
 
-        // Exit the pool via Balancer Vault
         IVault(VAULT).exitPool(
             poolId,
             address(this), // sender
             payable(msg.sender), // recipient
-            IVault.ExitPoolRequest(
-                poolTokens, minAmountsOut, abi.encode(ILBP.ExitKind.EXACT_BPT_IN_FOR_TOKENS_OUT, bptAmount), false
-            )
+            IVault.ExitPoolRequest({
+                assets: poolTokens,
+                minAmountsOut: minAmountsOut,
+                userData: abi.encode(ILBP.ExitKind.EXACT_BPT_IN_FOR_TOKENS_OUT, bptAmount),
+                toInternalBalance: false
+            })
         );
     }
 
     /*//////////////////////////////////////////////////////////////
-                        View / Helper Functions
+                        Internal Functions
     //////////////////////////////////////////////////////////////*/
 
-    /*//////////////////////////////////////////////////////////////
-                         Internal Functions
-    //////////////////////////////////////////////////////////////*/
-
-    /**
-     * @dev Constructs the name for a newly created LBP based on the name of the CRC.
-     * @param inflationaryCirlces The stable ERC20 CRC token address.
-     * @return The constructed LBP name.
-     */
-    function _name(address inflationaryCirlces) internal view returns (string memory) {
-        return string(abi.encodePacked(LBP_PREFIX, IERC20Metadata(inflationaryCirlces).name()));
+    /// @dev Constructs the name for a newly created LBP by prefixing the CRC token name.
+    /// @param inflationaryCircles The address of the CRC ERC20 token.
+    /// @return The constructed LBP pool name.
+    function _name(address inflationaryCircles) internal view returns (string memory) {
+        return string(abi.encodePacked(LBP_PREFIX, IERC20Metadata(inflationaryCircles).name()));
     }
 
-    /**
-     * @dev Constructs the symbol for a newly created LBP based on the symbol of the CRC.
-     * @param inflationaryCirlces The stable ERC20 CRC token address.
-     * @return The constructed LBP symbol.
-     */
-    function _symbol(address inflationaryCirlces) internal view returns (string memory) {
-        return string(abi.encodePacked(LBP_PREFIX, IERC20Metadata(inflationaryCirlces).symbol()));
+    /// @dev Constructs the symbol for a newly created LBP by prefixing the CRC token symbol.
+    /// @param inflationaryCircles The address of the CRC ERC20 token.
+    /// @return The constructed LBP pool symbol.
+    function _symbol(address inflationaryCircles) internal view returns (string memory) {
+        return string(abi.encodePacked(LBP_PREFIX, IERC20Metadata(inflationaryCircles).symbol()));
     }
 
+    /// @dev Returns initial weights array for pool creation based on token ordering.
+    /// @param tokenZero True if CRC token is sorted first, false if sDAI is first.
+    /// @return initWeights Two-element array of initial weights.
     function _initWeights(bool tokenZero) internal pure returns (uint256[] memory initWeights) {
-        // Set initial weights
         initWeights = new uint256[](2);
         initWeights[0] = tokenZero ? WEIGHT_CRC : WEIGHT_SDAI;
         initWeights[1] = tokenZero ? WEIGHT_SDAI : WEIGHT_CRC;
     }
 
-    /**
-     * @notice Returns the end weights array for the LBP (both 50%).
-     * @return endWeights An array containing end weights for stable CRC and sDAI.
-     */
+    /// @notice Returns the end weights array for the LBP (50% each).
+    /// @return endWeights Two-element array of final weights.
     function _endWeights() internal pure returns (uint256[] memory endWeights) {
         endWeights = new uint256[](2);
         endWeights[0] = WEIGHT_FINAL;
@@ -272,19 +266,13 @@ contract GroupLBPFactory {
                            Callback
     //////////////////////////////////////////////////////////////*/
 
-    /**
-     * @notice ERC1155 callback invoked when HubV2 transfers CRC tokens to this contract.
-     * @dev This function ensures that:
-     *      1. The caller is HubV2.
-     *      2. The correct CRC amount (480 CRC) is transferred.
-     *      3. The avatar is base group.
-     *      4. Wraps CRC into stable CRC and initiates the LBP creation process.
-     * @param from The address from which CRC tokens are sent.
-     * @param id The CRC token ID, which is the numeric representation of the avatar address.
-     * @param value The amount of CRC tokens transferred.
-     * @param data Encoded (tbd).
-     * @return The function selector to confirm the ERC1155 receive operation.
-     */
+    /// @notice ERC1155 callback invoked when the Circles Hub v2 transfers CRC tokens to this contract.
+    /// @dev Validates caller, CRC amount, wraps ERC1155 CRC into ERC20, and triggers LBP creation.
+    /// @param from The address from which CRC tokens are sent.
+    /// @param id The CRC token ID, representing the numeric avatar address.
+    /// @param value The amount of CRC tokens transferred.
+    /// @param data Encoded (tbd).
+    /// @return The ERC1155Receiver selector to confirm receipt.
     function onERC1155Received(address, address from, uint256 id, uint256 value, bytes calldata data)
         external
         nonReentrant
