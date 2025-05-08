@@ -26,20 +26,36 @@ contract GroupLBPFactory {
     /// @notice Thrown when trying to exit a pool that does not contain exactly two tokens.
     error OnlyTwoTokenLBPSupported();
 
+    /// @notice Thrown when an initial weight value is invalid.
     error InvalidInitWeight();
 
+    /// @notice Thrown when a final weight value is invalid.
     error InvalidFinalWeight();
 
+    /// @notice Thrown when an amount parameter is zero or resulting BPT is below minimum.
     error InvalidAmount();
 
+    /// @notice Thrown when the swap fee parameter is out of allowed bounds.
     error InvalidSwapFee();
 
+    /// @notice Thrown when a function is called by an address that is not a deployed Starter instance.
     error OnlyStarter();
 
     /*//////////////////////////////////////////////////////////////
                              Events
     //////////////////////////////////////////////////////////////*/
 
+    /// @notice Emitted when a new LBPStarter is created with its initial configuration.
+    /// @param creator The address that created the starter.
+    /// @param group The address of the base group for which the starter is created.
+    /// @param asset The address of the asset paired with the group in the starter.
+    /// @param lbpStarter The address of the newly deployed LBPStarter contract.
+    /// @param groupAmount The amount of group tokens to deposit in the starter.
+    /// @param assetAmount The amount of asset tokens to deposit in the starter.
+    /// @param groupInitWeight The initial weight assigned to the group token.
+    /// @param groupFinalWeight The final weight target for the group token.
+    /// @param swapFee The swap fee percentage for the pool.
+    /// @param updateWeightDuration The duration over which the weights are updated.
     event LBPStarterCreated(
         address indexed creator,
         address indexed group,
@@ -53,10 +69,10 @@ contract GroupLBPFactory {
         uint256 updateWeightDuration
     );
 
-    /// @notice Emitted when a group LBP creation process is completed.
-    /// @param creator The address that created the LBP and provided initial liquidity.
-    /// @param group The base group avatar address for which the LBP was created.
-    /// @param lbp The address of the newly deployed LBP pool.
+    /// @notice Emitted when the final LBP pool is successfully created.
+    /// @param creator The address that created the starter for the pool creation.
+    /// @param group The base group avatar address tied to the pool.
+    /// @param lbp The address of the newly created LBP pool.
     event GroupLBPCreated(address indexed creator, address indexed group, address indexed lbp);
 
     /*//////////////////////////////////////////////////////////////
@@ -108,19 +124,18 @@ contract GroupLBPFactory {
                             Storage
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Mapping of LBPStarter address to group it created for.
+    /// @notice Mapping of LBPStarter address to creator.
     mapping(address starter => address creator) public starterCreator;
 
-    /// @notice Mapping of LBP pool address to its creator.
+    /// @notice Mapping of LBP pool address to starter creator.
     mapping(address lbp => address creator) public lbpCreator;
 
     /*//////////////////////////////////////////////////////////////
                             Modifiers
     //////////////////////////////////////////////////////////////*/
-    /**
-     * @dev Restricts function execution to a valid LBPStarter instance deployed by this factory.
-     *      Reverts with `OnlyLBPStarter` if caller is not recognized as a LBPStarter instance.
-     */
+
+    /// @dev Ensures caller is a deployed LBPStarter instance; returns its creator address.
+    /// @return creator The address that created the calling starter.
     function onlyStarter() private view returns (address creator) {
         creator = starterCreator[msg.sender];
         if (creator == address(0)) revert OnlyStarter();
@@ -137,7 +152,16 @@ contract GroupLBPFactory {
                           LBPStarter Creation Logic
     //////////////////////////////////////////////////////////////*/
 
-    // fully parametrized config
+    /// @notice Deploys a new LBPStarter contract with custom parameters.
+    /// @param group The base group avatar address to use in the LBP.
+    /// @param asset The ERC20 asset address to pool against the group token.
+    /// @param groupAmount Amount of group tokens to deposit in the starter.
+    /// @param assetAmount Amount of asset tokens to deposit in the starter.
+    /// @param groupInitWeight Initial weight of group token in the pool (1e18 precision).
+    /// @param groupFinalWeight Final weight target of group token after ramp (1e18 precision).
+    /// @param swapFee Swap fee for trades, in Balancer's 1e18 representation.
+    /// @param updateWeightDuration Duration over which weights linearly update.
+    /// @return lbpStarter The address of the newly deployed starter contract.
     function createLBPStarter(
         address group,
         address asset,
@@ -172,7 +196,7 @@ contract GroupLBPFactory {
             )
         );
 
-        // link
+        // link starter to creator
         starterCreator[lbpStarter] = msg.sender;
 
         emit LBPStarterCreated(
@@ -189,7 +213,12 @@ contract GroupLBPFactory {
         );
     }
 
-    // default config with assets and amounts parametrized
+    /// @notice Deploys a new LBPStarter contract using default weights, update duration and fee.
+    /// @param group The base group avatar address to use in the LBP.
+    /// @param asset The ERC20 asset address to pool against the group token.
+    /// @param groupAmount Amount of group tokens to deposit in the starter.
+    /// @param assetAmount Amount of asset tokens to deposit in the starter.
+    /// @return lbpStarter The address of the newly deployed starter contract.
     function createLBPStarter(address group, address asset, uint256 groupAmount, uint256 assetAmount)
         external
         returns (address lbpStarter)
@@ -203,12 +232,17 @@ contract GroupLBPFactory {
                         LBP Creation/Exit Helpers
     //////////////////////////////////////////////////////////////*/
 
-    /**
-     * @notice Creates an LBP (Liquidity Bootstrapping Pool) for the LBPStarter instance.
-     * @dev Only callable by a LBPStarter instance deployed by this factory.
-     * @return lbp The newly created LBP address.
-     * @return request The constructed JoinPoolRequest.
-     */
+    /// @notice Creates the final Balancer LBP pool and constructs the join request.
+    /// @dev Only callable by a valid starter instance deployed by this factory.
+    /// @param asset The ERC20 asset address used in the pool.
+    /// @param stableCRC The CRC token address used in the pool.
+    /// @param stableCRCAmount Initial amount of CRC tokens to deposit.
+    /// @param assetAmount Initial amount of asset tokens to deposit.
+    /// @param weightCRC Initial weight assigned to the CRC token (1e18 precision).
+    /// @param swapFee Swap fee for the pool (1e18 precision).
+    /// @param group The base group address for reference in event.
+    /// @return lbp The address of the created Balancer LBP pool.
+    /// @return request The IVault.JoinPoolRequest struct to join the pool.
     function createLBP(
         address asset,
         address stableCRC,
@@ -240,11 +274,10 @@ contract GroupLBPFactory {
         amountsIn[0] = crcZero ? stableCRCAmount : assetAmount;
         amountsIn[1] = crcZero ? assetAmount : stableCRCAmount;
 
-        // Encode the userData needed for Balancer
         bytes memory userData = abi.encode(ILBP.JoinKind.INIT, amountsIn);
         request = IVault.JoinPoolRequest(tokens, amountsIn, userData, false);
 
-        // link
+        // link pool to creator
         lbpCreator[lbp] = creator;
 
         emit GroupLBPCreated(creator, group, lbp);
@@ -285,6 +318,9 @@ contract GroupLBPFactory {
                         View Functions
     //////////////////////////////////////////////////////////////*/
 
+    /// @notice Returns the inflationary token amount equivalent to a demurrage token amount.
+    /// @param demmurageAmount The amount in demurrage (non-inflationary) units.
+    /// @return stableAmount The converted inflationary token amount.
     function getStableAmount(uint256 demmurageAmount) public view returns (uint256 stableAmount) {
         uint64 day = HUB_V2.day(block.timestamp);
         stableAmount = HUB_V2.convertDemurrageToInflationaryValue(demmurageAmount, day);
@@ -294,6 +330,11 @@ contract GroupLBPFactory {
                         Internal Functions
     //////////////////////////////////////////////////////////////*/
 
+    /// @dev Validates nonzero amounts and minimum BPT invariant requirement.
+    /// @param crcZero Boolean indicating if CRC token is sorted first.
+    /// @param groupInitWeight Initial weight of the group token.
+    /// @param groupAmount Amount of group tokens to deposit.
+    /// @param assetAmount Amount of asset tokens to deposit.
     function _validateAmounts(bool crcZero, uint256 groupInitWeight, uint256 groupAmount, uint256 assetAmount)
         internal
         view
@@ -313,22 +354,25 @@ contract GroupLBPFactory {
         if (bptAmount < MIN_BPT) revert InvalidAmount();
     }
 
-    /// @dev Constructs the name for a newly created LBP by prefixing the group CRC name.
-    /// @param inflationaryCircles The address of the CRC ERC20 token.
-    /// @return The constructed LBP pool name.
-    function _name(address inflationaryCircles) internal view returns (string memory) {
-        return string(abi.encodePacked(LBP_PREFIX, _groupName(inflationaryCircles)));
+    /// @dev Constructs the pool name by prefixing the group name.
+    /// @param inflationaryCircles Address of the CRC ERC20 token.
+    /// @return The generated pool name string.
+    function _name(address inflationaryCirles) internal view returns (string memory) {
+        return string(abi.encodePacked(LBP_PREFIX, _groupName(inflationaryCirles)));
     }
 
-    /// @dev Constructs the symbol for a newly created LBP by prefixing the CRC token symbol.
-    /// @param inflationaryCircles The address of the CRC ERC20 token.
-    /// @return The constructed LBP pool symbol.
-    function _symbol(address inflationaryCircles) internal view returns (string memory) {
-        return string(abi.encodePacked(LBP_PREFIX, IERC20Metadata(inflationaryCircles).symbol()));
+    /// @dev Constructs the pool symbol by prefixing the CRC token symbol.
+    /// @param inflationaryCirles Address of the CRC ERC20 token.
+    /// @return The generated pool symbol string.
+    function _symbol(address inflationaryCirles) internal view returns (string memory) {
+        return string(abi.encodePacked(LBP_PREFIX, IERC20Metadata(inflationaryCirles).symbol()));
     }
 
-    function _groupName(address inflationaryCircles) internal view returns (string memory groupName) {
-        groupName = IERC20Metadata(inflationaryCircles).name();
+    /// @dev Retrieves the group name from the CRC token and strips the trailing suffix.
+    /// @param inflationaryCirles Address of the CRC ERC20 token.
+    /// @return groupName The trimmed group name.
+    function _groupName(address inflationaryCirles) internal view returns (string memory groupName) {
+        groupName = IERC20Metadata(inflationaryCirles).name();
         assembly {
             let len := mload(groupName)
             let newLen := sub(len, 7)
@@ -336,10 +380,10 @@ contract GroupLBPFactory {
         }
     }
 
-    /// @dev Returns initial weights array for pool creation based on token ordering.
-    /// @param crcZero True if CRC token is sorted first, false if asset is first.
-    /// @param weightCRC Initial CRC weight in a pool.
-    /// @return weights Two-element array of initial weights.
+    /// @dev Returns the initial weights for two tokens based on ordering.
+    /// @param crcZero True if CRC token sorts first in tokens array.
+    /// @param weightCRC The initial weight for the CRC token.
+    /// @return weights A two-element array of weights for [first, second] tokens.
     function _initWeights(bool crcZero, uint256 weightCRC) internal pure returns (uint256[] memory weights) {
         weights = new uint256[](2);
         weights[0] = crcZero ? weightCRC : 1 ether - weightCRC;
