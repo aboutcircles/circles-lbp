@@ -101,13 +101,24 @@ contract GroupLBPFactory {
     string internal constant LBP_PREFIX = "groupLBP-";
 
     // Requirements
-    uint256 private constant MIN_BPT = 1e6;
-    uint256 private constant MIN_SWAP_FEE = 0.000001 ether; // 0.0001%
-    uint256 private constant MAX_SWAP_FEE = 0.1 ether; // 10%
-    uint256 private constant MIN_WEIGHT = 0.01 ether; // 1%
-    uint256 private constant MAX_WEIGHT = 0.99 ether; // 99%
 
-    // DEFAULTS
+    /// @notice Minimum BPT (Balancer Pool Token) amount required for pool initialization (1e6 units).
+    uint256 private constant MIN_BPT = 1e6;
+
+    /// @notice Minimum allowable swap fee - 0.0001%.
+    uint256 private constant MIN_SWAP_FEE = 0.000001 ether;
+
+    /// @notice Maximum allowable swap fee - 10%.
+    uint256 private constant MAX_SWAP_FEE = 0.1 ether;
+
+    /// @notice Minimum allowable weight for tokens in the pool - 1%.
+    uint256 private constant MIN_WEIGHT = 0.01 ether;
+
+    /// @notice Maximum allowable weight for tokens in the pool - 99%.
+    uint256 private constant MAX_WEIGHT = 0.99 ether;
+
+    // Defaults
+
     /// @dev Weight for CRC token at pool initialization (1%).
     uint256 internal constant INIT_WEIGHT = 0.01 ether;
 
@@ -357,22 +368,22 @@ contract GroupLBPFactory {
     /// @dev Constructs the pool name by prefixing the group name.
     /// @param inflationaryCircles Address of the CRC ERC20 token.
     /// @return The generated pool name string.
-    function _name(address inflationaryCirles) internal view returns (string memory) {
-        return string(abi.encodePacked(LBP_PREFIX, _groupName(inflationaryCirles)));
+    function _name(address inflationaryCircles) internal view returns (string memory) {
+        return string(abi.encodePacked(LBP_PREFIX, _groupName(inflationaryCircles)));
     }
 
     /// @dev Constructs the pool symbol by prefixing the CRC token symbol.
-    /// @param inflationaryCirles Address of the CRC ERC20 token.
+    /// @param inflationaryCircles Address of the CRC ERC20 token.
     /// @return The generated pool symbol string.
-    function _symbol(address inflationaryCirles) internal view returns (string memory) {
-        return string(abi.encodePacked(LBP_PREFIX, IERC20Metadata(inflationaryCirles).symbol()));
+    function _symbol(address inflationaryCircles) internal view returns (string memory) {
+        return string(abi.encodePacked(LBP_PREFIX, IERC20Metadata(inflationaryCircles).symbol()));
     }
 
     /// @dev Retrieves the group name from the CRC token and strips the trailing suffix.
-    /// @param inflationaryCirles Address of the CRC ERC20 token.
+    /// @param inflationaryCircles Address of the CRC ERC20 token.
     /// @return groupName The trimmed group name.
-    function _groupName(address inflationaryCirles) internal view returns (string memory groupName) {
-        groupName = IERC20Metadata(inflationaryCirles).name();
+    function _groupName(address inflationaryCircles) internal view returns (string memory groupName) {
+        groupName = IERC20Metadata(inflationaryCircles).name();
         assembly {
             let len := mload(groupName)
             let newLen := sub(len, 7)
