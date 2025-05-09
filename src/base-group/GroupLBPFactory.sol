@@ -79,6 +79,9 @@ contract GroupLBPFactory {
                            Constants
     //////////////////////////////////////////////////////////////*/
 
+    /// @dev A non-zero “null” pointer used to mark the start/end of the list.
+    address private constant SENTINEL = address(0x1);
+
     /// @notice Circles Hub v2 contract address.
     IHub public constant HUB_V2 = IHub(address(0xc12C1E50ABB450d6205Ea2C3Fa861b3B834d13e8));
 
@@ -134,6 +137,11 @@ contract GroupLBPFactory {
     /*//////////////////////////////////////////////////////////////
                             Storage
     //////////////////////////////////////////////////////////////*/
+
+    /// @notice Tracks, for each creator, a singly‐linked list of starter addresses.
+    /// @dev `startersOfCreator[creator][node]` points to the next node in the list;
+    ///      `startersOfCreator[creator][SENTINEL]` is the head pointer.
+    mapping(address => mapping(address => address)) public startersOfCreator;
 
     /// @notice Mapping of LBPStarter address to creator.
     mapping(address starter => address creator) public starterCreator;
@@ -209,6 +217,9 @@ contract GroupLBPFactory {
 
         // link starter to creator
         starterCreator[lbpStarter] = msg.sender;
+
+        // insert starter into creators linked list
+        _insertStarter(msg.sender, lbpStarter);
 
         emit LBPStarterCreated(
             msg.sender,
@@ -337,6 +348,41 @@ contract GroupLBPFactory {
         stableAmount = HUB_V2.convertDemurrageToInflationaryValue(demmurageAmount, day);
     }
 
+    /**
+     * @notice Retrieves all starter addresses associated with a given creator.
+     * @dev
+     *  - Begins at the head of the linked list (`startersOfCreator[creator][SENTINEL]`).
+     *  - If uninitialized (`address(0)`), returns an empty array.
+     *  - Otherwise, first walks the list to count elements, then allocates a fixed-size array
+     *    and walks again to populate it in head-first order.
+     *  - Uses an unchecked increment for the second loop to save gas.
+     * @param creator The address whose starter list is being fetched.
+     * @return starters A dynamically-sized array of addresses, in insertion (head-first) order.
+     */
+    function getStarters(address creator) external view returns (address[] memory starters) {
+        // Count starters
+        uint256 count = 0;
+        address curr = startersOfCreator[creator][SENTINEL];
+        if (curr == address(0)) return starters;
+
+        while (curr != SENTINEL) {
+            count++;
+            curr = startersOfCreator[creator][curr];
+        }
+
+        // Collect starters
+        starters = new address[](count);
+        curr = startersOfCreator[creator][SENTINEL];
+        for (uint256 i; i < count;) {
+            starters[i] = curr;
+            curr = startersOfCreator[creator][curr];
+            unchecked {
+                ++i;
+            }
+        }
+        return starters;
+    }
+
     /*//////////////////////////////////////////////////////////////
                         Internal Functions
     //////////////////////////////////////////////////////////////*/
@@ -399,5 +445,25 @@ contract GroupLBPFactory {
         weights = new uint256[](2);
         weights[0] = crcZero ? weightCRC : 1 ether - weightCRC;
         weights[1] = crcZero ? 1 ether - weightCRC : weightCRC;
+    }
+
+    /// @notice Insert a new `starter` at the front of the linked list for `creator`.
+    /// @dev Performs a head‐insertion.
+    ///      If the list is empty, the “next” pointer for the new node is set to `SENTINEL`.
+    ///      Otherwise, it links the new node to the previous head.
+    ///      Updates the head pointer to the newly inserted `starter`.
+    /// @param creator The creator of the list into which `starter` should be inserted.
+    /// @param starter The address to insert into the list.
+    function _insertStarter(address creator, address starter) internal {
+        // load the current head; if unset (zero), treat as empty and point to SENTINEL
+        address sentinel = startersOfCreator[creator][SENTINEL];
+        if (sentinel == address(0)) {
+            sentinel = SENTINEL;
+        }
+
+        // link the new node to the old head
+        startersOfCreator[creator][starter] = sentinel;
+        // update head pointer to the new node
+        startersOfCreator[creator][SENTINEL] = starter;
     }
 }
