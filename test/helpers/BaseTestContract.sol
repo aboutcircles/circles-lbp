@@ -30,7 +30,8 @@ contract BaseTestContract is Test {
     uint256 public constant USDC_START_AMOUNT = 100e6; // 100 USDC
     uint256 public constant BACKING_ASSET_DEAL_AMOUNT = 0.03 ether;
     uint256 public constant YEAR = 365 days;
-    uint256 public constant MAX_DELTA = 3e10;
+    uint256 public constant MIN_BPT = 1e6;
+    uint256 public constant MAX_DELTA = 100;
     uint256 public constant SWAP_FEE = 0.03 ether;
     int256 public constant INITIAL_FEED_PRICE = 10 ether;
 

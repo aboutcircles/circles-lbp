@@ -409,8 +409,12 @@ contract CirclesBackingFactoryTest is Test, BaseTestContract {
         vm.prank(TEST_ACCOUNT_1);
         factory.exitLBP(lbp, LPTokensAmount, 0, 0);
 
-        assertApproxEqAbs(tokens[0].balanceOf(TEST_ACCOUNT_1), balances[0], MAX_DELTA);
-        assertApproxEqAbs(tokens[1].balanceOf(TEST_ACCOUNT_1), balances[1], MAX_DELTA);
+        assertApproxEqAbs(
+            tokens[0].balanceOf(TEST_ACCOUNT_1), balances[0] * LPTokensAmount / (LPTokensAmount + MIN_BPT), MAX_DELTA
+        );
+        assertApproxEqAbs(
+            tokens[1].balanceOf(TEST_ACCOUNT_1), balances[1] * LPTokensAmount / (LPTokensAmount + MIN_BPT), MAX_DELTA
+        );
     }
 
     function test_PartialExitDualAssetPool() public {
@@ -441,8 +445,16 @@ contract CirclesBackingFactoryTest is Test, BaseTestContract {
         assertEq(LPTokensAmount / 2, IERC20(lbp).balanceOf(TEST_ACCOUNT_1));
 
         (IERC20[] memory tokens, uint256[] memory balances,) = IVault(VAULT).getPoolTokens(poolId);
-        assertApproxEqAbs(tokens[0].balanceOf(TEST_ACCOUNT_1), balances[0], MAX_DELTA);
-        assertApproxEqAbs(tokens[1].balanceOf(TEST_ACCOUNT_1), balances[1], MAX_DELTA);
+        assertApproxEqAbs(
+            tokens[0].balanceOf(TEST_ACCOUNT_1),
+            balances[0] * (LPTokensAmount / 2) / (LPTokensAmount / 2 + MIN_BPT),
+            MAX_DELTA
+        );
+        assertApproxEqAbs(
+            tokens[1].balanceOf(TEST_ACCOUNT_1),
+            balances[1] * (LPTokensAmount / 2) / (LPTokensAmount / 2 + MIN_BPT),
+            MAX_DELTA
+        );
     }
 
     // -------------------------------------------------------------------------
