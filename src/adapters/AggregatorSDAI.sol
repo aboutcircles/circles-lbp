@@ -2,10 +2,7 @@
 pragma solidity ^0.8.28;
 
 import {IAggregatorV3Interface} from "src/interfaces/IAggregatorV3Interface.sol";
-
-interface ISDAI {
-    function convertToShares(uint256 assets) external view returns (uint256);
-}
+import {ISDAI} from "src/interfaces/ISDAI.sol";
 
 contract AggregatorSDAI is IAggregatorV3Interface {
     IAggregatorV3Interface public constant DAI_FEED =

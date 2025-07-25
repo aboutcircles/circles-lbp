@@ -31,6 +31,6 @@ curl -X 'PUT' \
   -H 'accept: application/json' \
   -H 'Content-Type: application/json' \
   -d '{
-  "fullAppData": "{\"version\":\"1.1.0\",\"appCode\":\"Circles backing powered by AboutCircles\",\"metadata\":{\"hooks\":{\"version\":\"0.1.0\",\"post\":[{\"target\":\"0x62313a160cd50dc151b9cd0466f895722835a9da\",\"callData\":\"0x13e8f89f\",\"gasLimit\":\"6000000\"}]}}}"
+  "fullAppData": "{\"version\":\"1.1.0\",\"appCode\":\"Circles backing powered by AboutCircles\",\"metadata\":{\"hooks\":{\"version\":\"0.1.0\",\"post\":[{\"target\":\"0x030ec07b988fe35219efa57e1cfdf7c31ea0e31f\",\"callData\":\"0x13e8f89f\",\"gasLimit\":\"6000000\"}]}}}"
 }'
 */
