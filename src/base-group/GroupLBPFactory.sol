@@ -193,7 +193,13 @@ contract GroupLBPFactory {
     ) public returns (address lbpStarter) {
         if (!BASE_GROUP_FACTORY.deployedByFactory(group)) revert OnlyBaseGroupsAreSupported();
         address stableERC20CRC = IBaseMintHandler(IBaseGroup(group).BASE_MINT_HANDLER()).INFLATIONARY();
-        _validateAmounts(stableERC20CRC < asset, groupInitWeight, groupAmount, assetAmount);
+        uint256 assetDecimals = IERC20Metadata(asset).decimals();
+        _validateAmounts(
+            stableERC20CRC < asset,
+            groupInitWeight,
+            groupAmount,
+            assetDecimals != 18 ? assetAmount * 10 ** (18 - assetDecimals) : assetAmount
+        );
 
         if (groupInitWeight < MIN_WEIGHT || groupInitWeight > MAX_WEIGHT) revert InvalidInitWeight();
         if (groupFinalWeight < MIN_WEIGHT || groupFinalWeight > MAX_WEIGHT) revert InvalidFinalWeight();
@@ -360,27 +366,37 @@ contract GroupLBPFactory {
      * @return starters A dynamically-sized array of addresses, in insertion (head-first) order.
      */
     function getStarters(address creator) external view returns (address[] memory starters) {
-        // Count starters
-        uint256 count = 0;
         address curr = startersOfCreator[creator][SENTINEL];
         if (curr == address(0)) return starters;
 
-        while (curr != SENTINEL) {
-            count++;
-            curr = startersOfCreator[creator][curr];
-        }
+        assembly {
+            // Calculate and store the storage slot for startersOfCreator[creator]
+            mstore(0, creator)
+            mstore(0x20, startersOfCreator.slot)
+            mstore(0x20, keccak256(0, 0x40))
+            // Store the array at the free memory location
+            starters := mload(0x40)
+            // Update free memory pointer
+            mstore(0x40, add(mload(0x40), 0x20))
+            // Start with the first node from solidity
+            let starter := curr
+            // While starter != SENTINEL
+            for {} iszero(eq(starter, 0x01)) {} {
+                // Increase free memory pointer by 0x20 for the new element
+                mstore(0x40, add(mload(0x40), 0x20))
+                // Increment array length
+                mstore(starters, add(mload(starters), 0x01))
+                // Store the new element in array
+                mstore(add(starters, mul(mload(starters), 0x20)), starter)
 
-        // Collect starters
-        starters = new address[](count);
-        curr = startersOfCreator[creator][SENTINEL];
-        for (uint256 i; i < count;) {
-            starters[i] = curr;
-            curr = startersOfCreator[creator][curr];
-            unchecked {
-                ++i;
+                // Compute the storage slot of startersOfCreator[creator][starter]
+                mstore(0, starter)
+                let nextSlot := keccak256(0, 0x40)
+
+                // Move to next node
+                starter := sload(nextSlot)
             }
         }
-        return starters;
     }
 
     /*//////////////////////////////////////////////////////////////
