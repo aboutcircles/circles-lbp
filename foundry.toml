@@ -9,6 +9,6 @@ solc="0.8.28"
 gnosis = "${GNOSIS_RPC}"
 
 [etherscan]
-gnosisscan = { key = "${GNOSIS_SCAN_KEY}", chain = 100 }
+gnosisscan = { key = "${GNOSIS_SCAN_KEY}", chain = 100, api-version = "v1" }
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options

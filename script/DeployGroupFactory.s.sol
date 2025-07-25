@@ -9,7 +9,8 @@ import {IERC1155} from "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
 
 contract DeployFactory is Script {
     address deployer = address(0xaAb15A045e74c6539B696B115e763A22BE5C9594);
-    GroupLBPFactory public groupLBPFactory; // 0x3B36d73506C3e75FcaCB27340faA38ade1CBaF0a
+    GroupLBPFactory public groupLBPFactory; // 0x3B36d73506C3e75FcaCB27340faA38ade1CBaF0a - old
+    // 0x1875962b807752325b2553222Ff0390EC50e477F - new
 
     function setUp() public {}
 
